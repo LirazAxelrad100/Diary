@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Diary</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <button id="modeBtn" class="ghost" type="button">Read</button>
+
+    <input id="search" class="search" type="search" placeholder="Search…" autocomplete="off" dir="auto">
+
+    <button id="menuBtn" class="ghost" type="button" aria-label="Menu">···</button>
+  </header>
+
+  <!-- Small panel behind the ··· button -->
+  <div id="menu" class="menu" hidden>
+    <button id="exportMd" type="button">Export as text (.md)</button>
+    <button id="exportJson" type="button">Backup (.json)</button>
+    <label class="fakebtn">
+      Restore from backup
+      <input id="importJson" type="file" accept="application/json,.json" hidden>
+    </label>
+    <p class="menuNote">Everything is stored only in this browser.</p>
+  </div>
+
+  <main id="stream" class="stream"></main>
+
+  <!-- Always-ready writing box. No save button on purpose. -->
+  <div id="composerWrap" class="composerWrap">
+    <textarea id="composer" class="composer" dir="auto" rows="4"
+              aria-label="Write"></textarea>
+    <p id="status" class="status" aria-live="polite"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
