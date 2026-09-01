@@ -4,9 +4,16 @@
 A private, local-first journalling web app for mixed Hebrew/English writing.
 Plain HTML/CSS/JS, no build step, no dependencies, no server.
 
-Live: https://lirazaxelrad100.github.io/Diary/
-Repo: https://github.com/LirazAxelrad100/Diary (note the capital D — Pages URLs
-are case-sensitive even though repo URLs are not)
+Live: https://liraz-diary.vercel.app/ (Vercel, auto-deploys on push to main;
+the original auto-generated diary-theta-five.vercel.app now redirects here)
+Repo: https://github.com/LirazAxelrad100/Diary (capital D)
+
+Hosting note: started on GitHub Pages, moved to Vercel on 2026-09-01 before
+Phase 2. Reason: Phase 2 needs a Supabase API key, and Pages has no build step
+and nowhere to keep a secret — Vercel generates config at deploy time from
+environment variables, same pattern as the `expenses` project. GitHub Pages has
+been switched off so there is only ever one live address; two would mean two
+separate localStorage diaries.
 
 ## Status — 2026-09-01
 Phase 1 done and deployed. Liraz is using it daily before we add sync.

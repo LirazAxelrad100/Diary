@@ -6,7 +6,7 @@ Built because every note-taking tool I tried either handled mixed Hebrew and
 English badly, moved my text around while I was writing, or eventually asked
 for a subscription.
 
-**[Open it →](https://LirazAxelrad100.github.io/Diary/)**
+**[Open it →](https://liraz-diary.vercel.app/)**
 
 ## What it does
 
