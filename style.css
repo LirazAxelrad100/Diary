@@ -283,3 +283,79 @@ body {
 }
 
 .status.show { opacity: 1; }
+
+/* ---------- sync badge ---------- */
+.sync {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- sign-in screen ---------- */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.gate[hidden] { display: none; }
+
+.loginBox {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.loginBox h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+
+.loginBox label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.loginBox input {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.loginBox input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.loginBox button {
+  margin-top: 4px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--bg);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.loginBox button:disabled { opacity: .5; cursor: default; }
+
+.loginError {
+  margin: 0;
+  min-height: 1.2em;
+  color: #c0392b;
+  font-size: 14px;
+  line-height: 1.4;
+}

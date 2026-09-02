@@ -1,15 +1,31 @@
-/* Diary — Phase 1
-   Everything lives in this browser's localStorage. Nothing is sent anywhere.
+/* Diary — Phase 2
+   Local-first with sync. Everything is written to this browser first, so the
+   app works with no signal; Supabase is a copy that lets other devices catch up.
 
    Data model: one record per WRITING SESSION.
-     { id: "…", ts: "2026-09-01T08:12:00.000Z", text: "…" }
-   Days are only a way of displaying them. */
+     { id, ts, text, updated_at, deleted }
+   `updated_at` decides who wins when two devices touched the same entry.
+   `deleted` is a tombstone, so a delete travels to the other device too. */
 
 const KEY = 'diary.entries.v1';
+const PENDING_KEY = 'diary.pending.v1';
+
 const IDLE_MS = 5 * 60 * 1000;   // after 5 min of not typing, the session closes
 const SAVE_MS = 400;             // autosave delay after the last keystroke
+const FLUSH_MS = 1200;           // upload delay after the last local change
+
+// Until config.js is filled in, run local-only rather than locking her out.
+const configured = typeof SUPABASE_URL === 'string' && !SUPABASE_URL.includes('YOUR-');
+
+// Never call this `supabase` — the CDN library already owns that global.
+const db = configured
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 let entries = load();
+let pending = loadPending();     // ids waiting to be uploaded
+let user = null;
+
 let draftId = null;              // the entry currently in the composer
 let editId = null;               // an older entry being edited in place
 let query = '';
@@ -20,11 +36,23 @@ const stream = $('stream');
 const composer = $('composer');
 const composerWrap = $('composerWrap');
 
+const now = () => new Date().toISOString();
+
 /* ---------- storage ---------- */
+
+function normalize(e) {
+  return {
+    id: e.id,
+    ts: e.ts,
+    text: e.text,
+    updated_at: e.updated_at || e.ts,   // entries written before Phase 2
+    deleted: !!e.deleted
+  };
+}
 
 function load() {
   try {
-    return JSON.parse(localStorage.getItem(KEY)) || [];
+    return (JSON.parse(localStorage.getItem(KEY)) || []).map(normalize);
   } catch {
     return [];
   }
@@ -38,7 +66,32 @@ function save() {
   }
 }
 
+function loadPending() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(PENDING_KEY)) || []);
+  } catch {
+    return new Set();
+  }
+}
+
+function savePending() {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify([...pending]));
+  } catch (err) {
+    console.error('Could not save queue', err);
+  }
+}
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* Every local change goes through here: stamp it, queue it, schedule upload. */
+function touch(entry) {
+  entry.updated_at = now();
+  pending.add(entry.id);
+  save();
+  savePending();
+  scheduleFlush();
+}
 
 /* Quiet confirmation, so you never wonder whether it saved. */
 let statusTimer = null;
@@ -114,7 +167,7 @@ function toHtml(text) {
 
 function visibleEntries() {
   const list = entries
-    .filter((e) => e.id !== draftId)               // the draft lives in the composer
+    .filter((e) => !e.deleted && e.id !== draftId)   // the draft lives in the composer
     .sort((a, b) => a.ts.localeCompare(b.ts));
 
   if (!query) return list;
@@ -154,6 +207,167 @@ function scrollToBottom() {
   stream.scrollTop = stream.scrollHeight;
 }
 
+/* ---------- sync ---------- */
+
+let flushTimer = null;
+
+function scheduleFlush() {
+  updateSync();
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, FLUSH_MS);
+}
+
+function updateSync() {
+  const el = $('sync');
+  if (!db || !user) { el.hidden = true; return; }
+
+  if (!navigator.onLine) {
+    el.hidden = false;
+    el.textContent = 'Offline';
+  } else if (pending.size) {
+    el.hidden = false;
+    el.textContent = `↑ ${pending.size}`;
+  } else {
+    el.hidden = true;
+  }
+}
+
+// Send everything queued. Anything that fails stays queued for next time.
+async function flush() {
+  if (!db || !user || !pending.size) { updateSync(); return; }
+
+  const rows = [...pending]
+    .map((id) => entries.find((e) => e.id === id))
+    .filter(Boolean)
+    .map((e) => ({
+      id: e.id,
+      user_id: user.id,
+      ts: e.ts,
+      text: e.text,
+      updated_at: e.updated_at,
+      deleted: e.deleted
+    }));
+
+  if (!rows.length) { pending.clear(); savePending(); updateSync(); return; }
+
+  const { error } = await db.from('entries').upsert(rows);
+
+  if (error) {
+    console.warn('Sync failed, will retry:', error.message);
+  } else {
+    rows.forEach((r) => pending.delete(r.id));
+    savePending();
+  }
+  updateSync();
+}
+
+// Take anything newer from the server. Never touches the entry being typed.
+async function pull() {
+  if (!db || !user) return;
+
+  const { data, error } = await db
+    .from('entries')
+    .select('id,ts,text,updated_at,deleted');
+
+  if (error) { console.warn('Could not fetch:', error.message); updateSync(); return; }
+
+  let changed = false;
+
+  for (const row of data) {
+    if (row.id === draftId) continue;
+    const local = entries.find((e) => e.id === row.id);
+
+    if (!local) {
+      entries.push(normalize(row));
+      changed = true;
+    } else if (new Date(row.updated_at) > new Date(local.updated_at)) {
+      Object.assign(local, normalize(row));
+      changed = true;
+    }
+  }
+
+  if (changed) { save(); render(); }
+  updateSync();
+}
+
+async function syncNow() {
+  await flush();
+  await pull();
+}
+
+/* ---------- sign in ---------- */
+
+function showGate(message = '') {
+  $('gate').hidden = false;
+  $('loginError').textContent = message;
+  $('signOut').hidden = true;
+  updateSync();
+}
+
+async function onSignedIn(u) {
+  if (user && user.id === u.id) return;   // onAuthStateChange also fires on load
+  user = u;
+
+  $('gate').hidden = true;
+  $('signOut').hidden = false;
+  $('menuNote').textContent = `Signed in as ${u.email}. Entries sync to your devices.`;
+
+  // First time this account is used in this browser: make sure everything
+  // already written here gets uploaded rather than stranded.
+  const firstKey = `diary.synced.${u.id}`;
+  if (!localStorage.getItem(firstKey)) {
+    entries.forEach((e) => pending.add(e.id));
+    savePending();
+    localStorage.setItem(firstKey, now());
+  }
+
+  await syncNow();
+  render();
+  scrollToBottom();
+}
+
+$('loginForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  if (!db) return;
+
+  const btn = $('loginBtn');
+  btn.disabled = true;
+  $('loginError').textContent = '';
+
+  const { error } = await db.auth.signInWithPassword({
+    email: $('email').value.trim(),
+    password: $('password').value
+  });
+
+  btn.disabled = false;
+  if (error) $('loginError').textContent = error.message;
+  else $('password').value = '';
+});
+
+$('signOut').addEventListener('click', async () => {
+  await flush();
+  await db.auth.signOut();
+  user = null;
+  $('menu').hidden = true;
+  showGate();
+});
+
+async function initAuth() {
+  if (!db) {                       // local-only mode, no config yet
+    $('gate').hidden = true;
+    return;
+  }
+
+  const { data } = await db.auth.getSession();
+  if (data.session) await onSignedIn(data.session.user);
+  else showGate();
+
+  db.auth.onAuthStateChange((_event, session) => {
+    if (session && session.user) onSignedIn(session.user);
+    else if (user) { user = null; showGate(); }
+  });
+}
+
 /* ---------- writing (composer) ---------- */
 
 let saveTimer = null;
@@ -177,21 +391,25 @@ function saveDraft() {
 
   if (!text.trim()) {                       // emptied again — drop the record
     if (draftId) {
-      entries = entries.filter((e) => e.id !== draftId);
+      const entry = entries.find((e) => e.id === draftId);
+      if (entry) { entry.deleted = true; entry.text = ''; touch(entry); }
       draftId = null;
-      save();
     }
     return;
   }
 
+  let entry;
   if (!draftId) {                           // first keystroke stamps the time
     draftId = uid();
-    entries.push({ id: draftId, ts: new Date().toISOString(), text });
+    entry = { id: draftId, ts: now(), text, updated_at: now(), deleted: false };
+    entries.push(entry);
   } else {
-    entries.find((e) => e.id === draftId).text = text;
+    entry = entries.find((e) => e.id === draftId);
+    entry.text = text;
   }
-  save();
-  flashSaved(`Saved ${timeLabel(entries.find((e) => e.id === draftId).ts)}`);
+
+  touch(entry);
+  flashSaved(`Saved ${timeLabel(entry.ts)}`);
 }
 
 // End the current writing session: the text moves up into the stream.
@@ -205,6 +423,7 @@ function commitDraft() {
   autoGrow(composer);
   render();
   scrollToBottom();
+  flush();
 }
 
 composer.addEventListener('input', onType);
@@ -213,12 +432,21 @@ composer.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { commitDraft(); composer.blur(); }
 });
 
-// A session also ends when you leave the page or close the tab.
+// Leaving the page ends the session and pushes what's queued.
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { saveDraft(); commitDraft(); }
+  if (document.hidden) {
+    saveDraft();
+    commitDraft();
+  } else {
+    pull();          // coming back: pick up anything written on another device
+  }
 });
 
 window.addEventListener('beforeunload', saveDraft);
+window.addEventListener('online', syncNow);
+window.addEventListener('offline', updateSync);
+
+$('sync').addEventListener('click', syncNow);
 
 /* ---------- editing an older entry ---------- */
 
@@ -251,7 +479,7 @@ function startEdit(id) {
     autoGrow(box);
     entry.text = box.value;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { save(); flashSaved(); }, SAVE_MS);
+    saveTimer = setTimeout(() => { touch(entry); flashSaved(); }, SAVE_MS);
   });
 
   box.addEventListener('keydown', (e) => { if (e.key === 'Escape') endEdit(); });
@@ -260,18 +488,20 @@ function startEdit(id) {
 
   article.querySelector('[data-act="delete"]').addEventListener('click', () => {
     if (!confirm('Delete this entry? This cannot be undone.')) return;
-    entries = entries.filter((e) => e.id !== id);
+    entry.deleted = true;      // tombstone, so the delete reaches other devices
+    touch(entry);
     editId = null;
-    save();
     render();
   });
 }
 
 function endEdit() {
   const entry = entries.find((e) => e.id === editId);
-  if (entry && !entry.text.trim()) entries = entries.filter((e) => e.id !== editId);
+  if (entry) {
+    if (!entry.text.trim()) entry.deleted = true;
+    touch(entry);
+  }
   editId = null;
-  save();
   render();
 }
 
@@ -317,7 +547,10 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 
 $('exportMd').addEventListener('click', () => {
   commitDraft();
-  const sorted = [...entries].sort((a, b) => a.ts.localeCompare(b.ts));
+  const sorted = entries
+    .filter((e) => !e.deleted)
+    .sort((a, b) => a.ts.localeCompare(b.ts));
+
   let out = '';
   let lastDay = null;
 
@@ -349,12 +582,16 @@ $('importJson').addEventListener('change', async (ev) => {
     let added = 0;
     for (const e of incoming) {
       if (e && e.id && e.ts && typeof e.text === 'string' && !seen.has(e.id)) {
-        entries.push(e);
-        seen.add(e.id);
+        const entry = normalize(e);
+        entries.push(entry);
+        pending.add(entry.id);
+        seen.add(entry.id);
         added++;
       }
     }
     save();
+    savePending();
+    scheduleFlush();
     render();
     scrollToBottom();
     alert(`Restored ${added} ${added === 1 ? 'entry' : 'entries'}.`);
@@ -370,3 +607,4 @@ $('importJson').addEventListener('change', async (ev) => {
 render();
 scrollToBottom();
 autoGrow(composer);
+initAuth();

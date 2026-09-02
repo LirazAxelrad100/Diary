@@ -4,16 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Diary">
   <title>Diary</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+  <!-- Sign-in screen. Covers everything until there is a session. -->
+  <div id="gate" class="gate" hidden>
+    <form id="loginForm" class="loginBox">
+      <h1>Diary</h1>
+      <label>Email
+        <input id="email" type="email" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input id="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button id="loginBtn" type="submit">Sign in</button>
+      <p id="loginError" class="loginError" role="alert"></p>
+    </form>
+  </div>
 
   <header class="topbar">
     <button id="modeBtn" class="ghost" type="button">Read</button>
 
     <input id="search" class="search" type="search" placeholder="Search…" autocomplete="off" dir="auto">
 
+    <button id="sync" class="ghost sync" type="button" hidden></button>
     <button id="menuBtn" class="ghost" type="button" aria-label="Menu">···</button>
   </header>
 
@@ -25,7 +44,8 @@
       Restore from backup
       <input id="importJson" type="file" accept="application/json,.json" hidden>
     </label>
-    <p class="menuNote">Everything is stored only in this browser.</p>
+    <button id="signOut" type="button" hidden>Sign out</button>
+    <p class="menuNote" id="menuNote">Everything is stored only in this browser.</p>
   </div>
 
   <main id="stream" class="stream"></main>
@@ -37,6 +57,8 @@
     <p id="status" class="status" aria-live="polite"></p>
   </div>
 
-  <script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
