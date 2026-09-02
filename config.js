@@ -12,5 +12,5 @@
 //
 // Until these are filled in, the app runs local-only in this browser.
 
-const SUPABASE_URL = "https://adytbgjgsncylyxzonmk.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://adytbgjgsncylyxzonmk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_YxNR7MOktLtu4RKu4roxPQ_hsyLXGnq";
