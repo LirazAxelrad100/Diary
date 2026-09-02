@@ -17,6 +17,10 @@ separate localStorage diaries.
 
 ## Status — 2026-09-02
 Phase 2 done: syncs across devices behind an email+password login.
+Phase 3 done: visual redesign from a written handoff (see "The redesign"
+below). Desktop checked and approved; **a real-phone pass is still outstanding**
+— responsive mode does not exercise the iOS keyboard against `100dvh` or the
+safe-area insets.
 
 - `index.html` / `style.css` / `app.js` — the whole app
 - `config.js` — Supabase URL + publishable key (committed on purpose, see below)
@@ -45,8 +49,44 @@ with no signal; Supabase is the copy other devices read.
 - The top bar shows `↑ N` when uploads are queued, `Offline` when there's no
   connection, and nothing at all when everything is synced. Tap it to force one.
 
+## The redesign (2026-09-02)
+Source: `~/Downloads/design_handoff_digital_diary/` — a README plus
+`design-reference-3g.html`. Values were read out of it and re-expressed here;
+the prototype HTML was not ported.
+
+- Hebrew-first, `dir="rtl"`, light only. All tokens are CSS variables at the
+  top of `style.css` with the handoff's own token names.
+- Writing view shows **today only**; reading view pages **one month at a time**.
+- Search lives in the reading header only, and spans **all** months (the
+  handoff said "current scope" — deliberately widened, one line to revert).
+- New state: `visibleMonth {y, m}`.
+
+### Where the handoff's README and its mock disagreed
+The README was followed in all five cases; the mock looks like the older draft.
+Worth re-checking with the designer if the look is ever revisited:
+- every session time — README `#96684f` terracotta, mock `#8a93a1` slate
+- composer live time, caret, mobile live dot — README `#5c6b7d`, mock `#8a93a1`
+- mobile writing header — README says time-of-day was dropped, mock still
+  shows `ערב`
+
+### Deliberate departures from the spec
+- **Fonts.** Space Grotesk has no Hebrew glyphs (latin/latin-ext/vietnamese
+  only) and JetBrains Mono has none either — so ~95% of the app would have
+  fallen back silently. Assistant leads `--font-ui`, Space Grotesk picks up
+  Latin runs. Mono is for LTR times and counts only. Swap the Hebrew face by
+  changing `--font-he` alone.
+- **Month arrows** padded to ~28px desktop / 44px mobile; drawn at the spec'd
+  size, but 12×15px is not a target. Same for the other mobile controls.
+- **Below 720px** the entry counts and the clock half of the header stamp are
+  hidden — they do not fit beside the buttons.
+- **Composer capped at `52dvh`.** The spec says it should never scroll
+  internally; unbounded growth eats the page on a phone.
+- **UI copy is Hebrew throughout**, including the undesigned parts (menu,
+  sign-in), which the handoff did not cover.
+
 ## Next
-- Phase 3 (optional): passphrase encryption via Web Crypto before upload, so
+- Real-phone check of the redesign (keyboard + safe area).
+- Phase 4 (optional): passphrase encryption via Web Crypto before upload, so
   the text is unreadable even to Supabase.
 
 ## Key decisions and why
@@ -75,6 +115,14 @@ with no signal; Supabase is the copy other devices read.
 - **Empty days are not shown.**
 
 ## Avoid
+- **Never put `dir` and a logical property on the same element.**
+  `inset-inline-start`, `margin-inline-*` and `padding-inline-*` resolve against
+  the direction of the element they are written on — so `dir="ltr"` on a
+  positioned timestamp (to stop `07:14` reversing) silently flips which side
+  `inset-inline-start` means, and the element lands hundreds of pixels away with
+  no error. Put the LTR isolation on an inner `<bdi>` and leave the positioned
+  element in the parent's direction. Three places rely on this: session times,
+  the composer's live time, and the header stamp.
 - Do not open `index.html` via `file://` — browsers restrict storage there and
   entries can be lost. Use the Pages URL, or serve the folder over HTTP.
 - Never commit exported diary files. `.gitignore` already blocks

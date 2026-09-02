@@ -1,66 +1,94 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="light">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Diary">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" href="favicon.png">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
   <title>Diary</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500&family=Space+Grotesk:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap">
+
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="mode-writing">
 
   <!-- Sign-in screen. Covers everything until there is a session. -->
   <div id="gate" class="gate" hidden>
     <form id="loginForm" class="loginBox">
       <h1>Diary</h1>
-      <label>Email
-        <input id="email" type="email" autocomplete="username" required>
+      <label>אימייל
+        <input id="email" type="email" autocomplete="username" dir="ltr" required>
       </label>
-      <label>Password
-        <input id="password" type="password" autocomplete="current-password" required>
+      <label>סיסמה
+        <input id="password" type="password" autocomplete="current-password" dir="ltr" required>
       </label>
-      <button id="loginBtn" type="submit">Sign in</button>
+      <button id="loginBtn" type="submit">כניסה</button>
       <p id="loginError" class="loginError" role="alert"></p>
     </form>
   </div>
 
   <header class="topbar">
-    <button id="modeBtn" class="ghost" type="button">Read</button>
+    <!-- writing: quiet "you are writing now" marker -->
+    <span class="headDot" data-when="writing"></span>
+    <span class="barTitle" id="barTitle"></span>
+    <span class="meta" id="nowStamp" dir="ltr" data-when="writing"></span>
 
-    <input id="search" class="search" type="search" placeholder="Search…" autocomplete="off" dir="auto">
+    <!-- reading: month switcher. In RTL, › steps back and ‹ steps forward. -->
+    <div class="monthNav" id="monthNav" data-when="reading">
+      <button class="mArrow" id="prevMonth" type="button" aria-label="החודש הקודם">&rsaquo;</button>
+      <span class="mLabel" id="monthLabel"></span>
+      <button class="mArrow" id="nextMonth" type="button" aria-label="החודש הבא">&lsaquo;</button>
+    </div>
 
-    <button id="sync" class="ghost sync" type="button" hidden></button>
-    <button id="menuBtn" class="ghost" type="button" aria-label="Menu">···</button>
+    <!-- The count sits with the month switcher when reading, and beside the
+         Read button when writing — so there is one of it on each side. -->
+    <span class="meta" id="countReading" dir="ltr" data-when="reading"></span>
+
+    <span class="spacer"></span>
+
+    <input id="search" class="search" type="search" placeholder="חיפוש…"
+           autocomplete="off" dir="auto" data-when="reading" aria-label="חיפוש">
+    <span class="meta" id="countWriting" dir="ltr" data-when="writing"></span>
+    <button id="sync" class="syncBtn" type="button" hidden></button>
+    <button id="modeBtn" class="btn" type="button"></button>
+    <button id="menuBtn" class="iconBtn" type="button" aria-label="תפריט">···</button>
   </header>
 
   <!-- Small panel behind the ··· button -->
   <div id="menu" class="menu" hidden>
-    <button id="exportMd" type="button">Export as text (.md)</button>
-    <button id="exportJson" type="button">Backup (.json)</button>
+    <button id="exportMd" type="button">ייצוא כטקסט (.md)</button>
+    <button id="exportJson" type="button">גיבוי (.json)</button>
     <label class="fakebtn">
-      Restore from backup
+      שחזור מגיבוי
       <input id="importJson" type="file" accept="application/json,.json" hidden>
     </label>
-    <button id="signOut" type="button" hidden>Sign out</button>
-    <p class="menuNote" id="menuNote">Everything is stored only in this browser.</p>
+    <button id="signOut" type="button" hidden>יציאה</button>
+    <p class="menuNote" id="menuNote">הכל נשמר רק בדפדפן הזה.</p>
   </div>
 
   <main id="stream" class="stream"></main>
 
   <!-- Always-ready writing box. No save button on purpose. -->
   <div id="composerWrap" class="composerWrap">
-    <textarea id="composer" class="composer" dir="auto" rows="4"
-              aria-label="Write"></textarea>
-    <p id="status" class="status" aria-live="polite"></p>
+    <div class="composerRail">
+      <span class="liveDot"></span>
+      <span class="liveTime" id="liveTime"></span>
+      <textarea id="composer" class="composer" dir="auto" rows="1"
+                aria-label="כתיבה"></textarea>
+      <p id="status" class="status" aria-live="polite"></p>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

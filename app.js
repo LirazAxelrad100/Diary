@@ -30,11 +30,11 @@ let draftId = null;              // the entry currently in the composer
 let editId = null;               // an older entry being edited in place
 let query = '';
 let readMode = false;
+let visibleMonth = thisMonth();  // which month the reading view is showing
 
 const $ = (id) => document.getElementById(id);
 const stream = $('stream');
 const composer = $('composer');
-const composerWrap = $('composerWrap');
 
 const now = () => new Date().toISOString();
 
@@ -93,16 +93,20 @@ function touch(entry) {
   scheduleFlush();
 }
 
-/* Quiet confirmation, so you never wonder whether it saved. */
-let statusTimer = null;
+/* Quiet confirmation under the composer, so you never wonder whether it saved.
+   The Esc hint is always there; "נשמר HH:MM" appears once there is something
+   to save. It stays put rather than flashing — the design treats it as a
+   standing caption, not a notification. */
+let savedAt = '';
 
-function flashSaved(text = 'Saved') {
-  const el = $('status');
-  el.textContent = text;
-  el.classList.add('show');
-  clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => el.classList.remove('show'), 1800);
+function setStatus(time) {
+  if (time !== undefined) savedAt = time;
+  $('status').innerHTML =
+    (savedAt ? `נשמר <span class="mono" dir="ltr">${savedAt}</span>` : '') +
+    `<span class="escHint">${savedAt ? ' · ' : ''}Esc לסגירת הרשומה</span>`;
 }
+
+function flashSaved(time = '') { setStatus(time); }
 
 /* ---------- dates ---------- */
 
@@ -113,16 +117,55 @@ function dayKey(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// "יום שלישי · 1 בספטמבר" — the divider between days in the reading view.
 function dayLabel(iso) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-  });
+  const d = new Date(iso);
+  const weekday = d.toLocaleDateString('he-IL', { weekday: 'long' });
+  const date = d.toLocaleDateString('he-IL', { day: 'numeric', month: 'long' });
+  return `${weekday} · ${date}`;
 }
 
 function timeLabel(iso) {
   const d = new Date(iso);
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/* ---------- months ---------- */
+
+// A month is {y, m} with m 0-11, matching Date. Compared via monthKey.
+function thisMonth() {
+  const d = new Date();
+  return { y: d.getFullYear(), m: d.getMonth() };
+}
+
+function monthOf(iso) {
+  const d = new Date(iso);
+  return { y: d.getFullYear(), m: d.getMonth() };
+}
+
+const monthKey = (mo) => mo.y * 12 + mo.m;
+
+function stepMonth(mo, by) {
+  const d = new Date(mo.y, mo.m + by, 1);
+  return { y: d.getFullYear(), m: d.getMonth() };
+}
+
+// "ספטמבר 2026"
+function monthLabel(mo) {
+  return new Date(mo.y, mo.m, 1)
+    .toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+}
+
+// "tue 01.09 · 22:05" — stays LTR so the clock never reverses. The clock half
+// is its own span so a narrow header can drop it; the composer shows the time
+// anyway, and the full stamp will not fit beside the buttons on a phone.
+function headStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const wd = d.toLocaleDateString('en-GB', { weekday: 'short' }).toLowerCase();
+  return `<bdi>${wd} ${pad(d.getDate())}.${pad(d.getMonth() + 1)}</bdi>` +
+         `<span class="stampTime"> · <bdi>${timeLabel(d.toISOString())}</bdi></span>`;
 }
 
 /* ---------- tiny markdown ---------- */
@@ -165,42 +208,103 @@ function toHtml(text) {
 
 /* ---------- rendering ---------- */
 
-function visibleEntries() {
-  const list = entries
-    .filter((e) => !e.deleted && e.id !== draftId)   // the draft lives in the composer
-    .sort((a, b) => a.ts.localeCompare(b.ts));
+// The draft lives in the composer, not the stream, and deletes are tombstones.
+const live = () => entries.filter((e) => !e.deleted && e.id !== draftId);
 
-  if (!query) return list;
-  const q = query.toLowerCase();
-  return list.filter((e) => e.text.toLowerCase().includes(q));
+const byTime = (a, b) => a.ts.localeCompare(b.ts);
+
+function matches(e) {
+  return !query || e.text.toLowerCase().includes(query.toLowerCase());
+}
+
+// Writing view shows today only — the earlier sessions of this same day.
+function todayEntries() {
+  const key = dayKey(now());
+  return live().filter((e) => dayKey(e.ts) === key).sort(byTime);
+}
+
+// Reading view is scoped to one month. A search reaches across every month,
+// because paging month by month to find a word is not really searching.
+function readingEntries() {
+  const list = live().filter(matches).sort(byTime);
+  if (query) return list;
+  const k = monthKey(visibleMonth);
+  return list.filter((e) => monthKey(monthOf(e.ts)) === k);
+}
+
+function hasEntriesBefore(mo) {
+  const k = monthKey(mo);
+  return live().some((e) => monthKey(monthOf(e.ts)) < k);
+}
+
+function entryHtml(e) {
+  // The <bdi> keeps the clock LTR without setting dir on the positioned span —
+  // dir on that span would flip which side inset-inline-start means.
+  return `<article class="entry" data-id="${e.id}">
+            <span class="dot"></span>
+            <span class="time"><bdi>${timeLabel(e.ts)}</bdi></span>
+            <div class="body">${toHtml(e.text)}</div>
+          </article>`;
 }
 
 function render() {
-  const list = visibleEntries();
-  stream.className = 'stream' + (readMode || query ? ' read' : '');
+  const list = readMode ? readingEntries() : todayEntries();
 
   if (!list.length) {
-    const msg = query ? 'Nothing found.' : 'Start writing below.';
+    const msg = query ? 'לא נמצא כלום.'
+      : readMode ? 'אין רשומות בחודש הזה.'
+      : 'אפשר להתחיל לכתוב למטה.';
     stream.innerHTML = `<div class="inner"><p class="empty">${msg}</p></div>`;
+    updateChrome(0);
     return;
   }
 
   let html = '<div class="inner">';
-  let lastDay = null;
 
-  for (const e of list) {
-    const key = dayKey(e.ts);
-    if (key !== lastDay) {
-      html += `<h2 class="day">${dayLabel(e.ts)}</h2>`;
-      lastDay = key;
+  if (readMode) {
+    // Each day gets its own divider and its own length of rail.
+    let lastDay = null;
+    for (const e of list) {
+      const key = dayKey(e.ts);
+      if (key !== lastDay) {
+        if (lastDay !== null) html += '</div></section>';
+        html += `<section class="dayGroup">
+                   <div class="dayDivider"><span>${dayLabel(e.ts)}</span></div>
+                   <div class="thread">`;
+        lastDay = key;
+      }
+      html += entryHtml(e);
     }
-    html += `<article class="entry" data-id="${e.id}">
-               <span class="time">${timeLabel(e.ts)}</span>
-               ${toHtml(e.text)}
-             </article>`;
+    html += '</div></section>';
+  } else {
+    html += `<div class="thread">${list.map(entryHtml).join('')}</div>`;
   }
 
   stream.innerHTML = html + '</div>';
+  updateChrome(list.length);
+}
+
+/* Header text differs per mode; both halves live in the same bar. */
+function updateChrome(shown) {
+  document.body.className = readMode ? 'mode-reading' : 'mode-writing';
+  $('barTitle').textContent = readMode ? 'קריאה' : 'כותבת עכשיו';
+  $('modeBtn').textContent = readMode ? 'כתיבה' : 'קריאה';
+
+  if (readMode) {
+    $('monthNav').hidden = !!query;
+    $('monthLabel').textContent = monthLabel(visibleMonth);
+    // In RTL ‹ moves forward, so it stops at the month we are actually in.
+    $('nextMonth').disabled = monthKey(visibleMonth) >= monthKey(thisMonth());
+    $('prevMonth').disabled = !hasEntriesBefore(visibleMonth);
+    const noun = shown === 1 ? 'entry' : 'entries';
+    $('countReading').textContent = query
+      ? `${shown} ${shown === 1 ? 'hit' : 'hits'}`
+      : `${shown} ${noun}`;
+  } else {
+    $('nowStamp').innerHTML = headStamp();
+    $('countWriting').textContent = String(live().length);
+    $('liveTime').innerHTML = `<bdi>${timeLabel(now())}</bdi>`;
+  }
 }
 
 function scrollToBottom() {
@@ -223,7 +327,7 @@ function updateSync() {
 
   if (!navigator.onLine) {
     el.hidden = false;
-    el.textContent = 'Offline';
+    el.textContent = 'לא מקוון';
   } else if (pending.size) {
     el.hidden = false;
     el.textContent = `↑ ${pending.size}`;
@@ -310,7 +414,7 @@ async function onSignedIn(u) {
 
   $('gate').hidden = true;
   $('signOut').hidden = false;
-  $('menuNote').textContent = `Signed in as ${u.email}. Entries sync to your devices.`;
+  $('menuNote').textContent = `מחוברת כ־${u.email}. הרשומות מסתנכרנות בין המכשירים.`;
 
   // First time this account is used in this browser: make sure everything
   // already written here gets uploaded rather than stranded.
@@ -409,7 +513,8 @@ function saveDraft() {
   }
 
   touch(entry);
-  flashSaved(`Saved ${timeLabel(entry.ts)}`);
+  setStatus(timeLabel(now()));
+  updateChrome(0);
 }
 
 // End the current writing session: the text moves up into the stream.
@@ -421,6 +526,7 @@ function commitDraft() {
   draftId = null;
   composer.value = '';
   autoGrow(composer);
+  setStatus('');            // the next session starts with a clean caption
   render();
   scrollToBottom();
   flush();
@@ -462,11 +568,14 @@ function startEdit(id) {
   const entry = entries.find((e) => e.id === id);
   const article = stream.querySelector(`[data-id="${id}"]`);
 
-  article.innerHTML = `<span class="time">${timeLabel(entry.ts)}</span>
-    <textarea class="editor" dir="auto"></textarea>
-    <div class="entryTools">
-      <button type="button" class="danger" data-act="delete">Delete</button>
-      <button type="button" data-act="done">Done</button>
+  article.innerHTML = `<span class="dot"></span>
+    <span class="time" dir="ltr">${timeLabel(entry.ts)}</span>
+    <div class="body">
+      <textarea class="editor" dir="auto"></textarea>
+      <div class="entryTools">
+        <button type="button" class="danger" data-act="delete">מחיקה</button>
+        <button type="button" data-act="done">סיום</button>
+      </div>
     </div>`;
 
   const box = article.querySelector('.editor');
@@ -479,7 +588,7 @@ function startEdit(id) {
     autoGrow(box);
     entry.text = box.value;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { touch(entry); flashSaved(); }, SAVE_MS);
+    saveTimer = setTimeout(() => { touch(entry); setStatus(timeLabel(now())); }, SAVE_MS);
   });
 
   box.addEventListener('keydown', (e) => { if (e.key === 'Escape') endEdit(); });
@@ -487,7 +596,7 @@ function startEdit(id) {
   article.querySelector('[data-act="done"]').addEventListener('click', endEdit);
 
   article.querySelector('[data-act="delete"]').addEventListener('click', () => {
-    if (!confirm('Delete this entry? This cannot be undone.')) return;
+    if (!confirm('למחוק את הרשומה? אי אפשר לבטל.')) return;
     entry.deleted = true;      // tombstone, so the delete reaches other devices
     touch(entry);
     editId = null;
@@ -507,21 +616,43 @@ function endEdit() {
 
 /* ---------- search, modes, menu ---------- */
 
+// Search only exists in the reading header, so it never interrupts writing.
 $('search').addEventListener('input', (e) => {
   query = e.target.value.trim();
-  composerWrap.classList.toggle('hidden', !!query);
   render();
-  if (!query) scrollToBottom();
+  stream.scrollTop = 0;
 });
 
 $('modeBtn').addEventListener('click', () => {
   commitDraft();
   readMode = !readMode;
-  $('modeBtn').textContent = readMode ? 'Write' : 'Read';
-  composerWrap.classList.toggle('hidden', readMode);
+
+  if (readMode) {
+    // Land on this month, or on the newest month that actually has writing.
+    visibleMonth = thisMonth();
+    if (!readingEntries().length) {
+      const newest = live().sort(byTime).pop();
+      if (newest) visibleMonth = monthOf(newest.ts);
+    }
+  } else {
+    query = '';
+    $('search').value = '';
+  }
+
   render();
-  if (!readMode) scrollToBottom();
+  if (readMode) stream.scrollTop = 0;
+  else { scrollToBottom(); composer.focus(); }
 });
+
+/* Month switcher. RTL: › steps back in time, ‹ steps forward. */
+function goMonth(by) {
+  visibleMonth = stepMonth(visibleMonth, by);
+  render();
+  stream.scrollTop = 0;
+}
+
+$('prevMonth').addEventListener('click', () => goMonth(-1));
+$('nextMonth').addEventListener('click', () => goMonth(1));
 
 $('menuBtn').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -604,7 +735,15 @@ $('importJson').addEventListener('change', async (ev) => {
 
 /* ---------- start ---------- */
 
+setStatus('');
 render();
 scrollToBottom();
 autoGrow(composer);
+
+// The landing state is writing, with the caret already in the box.
+composer.focus();
+
+// The header clock is part of the design, so it has to stay true.
+setInterval(() => { if (!readMode) updateChrome(0); }, 20000);
+
 initAuth();

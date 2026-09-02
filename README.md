@@ -18,7 +18,8 @@ for a subscription.
 - **Handles Hebrew and English properly.** Direction is decided per paragraph,
   so a Hebrew entry with an English word inside it stays where you put it.
 - **Saves as you type.** There is deliberately no Save button.
-- **Read mode** turns the stream into a clean page, times in the margin.
+- **Read mode** turns the stream into a clean page, one month at a time, with
+  each day's sessions hung off a single vertical thread.
 - **Instant offline search** across everything you have ever written.
 - **Syncs across devices.** Write on the laptop in the morning, read it on the
   phone at night. Works offline and catches up when the signal returns.
@@ -38,6 +39,26 @@ The Supabase URL and publishable key are committed here deliberately. A
 publishable key is meant to be public in browser apps: it identifies the
 project but grants nothing without a valid session. The password is what
 protects the diary.
+
+## Design
+
+The current look was built from a written design handoff — tokens, type scale,
+spacing and copy specified up front, then rebuilt inside this codebase rather
+than pasted in from the prototype.
+
+**Hebrew-first, right-to-left.** About 95% of what I write is Hebrew, so the
+app is laid out RTL, with clock times isolated back to LTR so `07:14` never
+reverses.
+
+**The specified typeface had no Hebrew in it.** The handoff called for Space
+Grotesk throughout; it ships Latin, Latin-ext and Vietnamese only, so almost
+every character in the app would have fallen back to whatever the system
+offered. Assistant now carries the Hebrew and Space Grotesk picks up the
+English words inside a Hebrew sentence. JetBrains Mono has no Hebrew either,
+so it is used strictly for times and counts, never for Hebrew captions.
+
+**Light only.** The design was specified light-only and the dark theme was
+dropped with it rather than invented to fill the gap.
 
 ## Design decisions
 
@@ -83,5 +104,6 @@ the next sync.
 
 Phase 1 — local-only journal. **Done.**
 Phase 2 — sync across phone and laptop, behind a login. **Done.**
-Phase 3 — optional passphrase encryption, so the text is unreadable even to
+Phase 3 — visual redesign, Hebrew-first RTL, month-at-a-time reading. **Done.**
+Phase 4 — optional passphrase encryption, so the text is unreadable even to
 the database. Not started.

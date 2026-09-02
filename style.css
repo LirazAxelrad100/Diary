@@ -1,103 +1,237 @@
-/* ---------- colours ---------- */
+/* Diary — visual design "3g".
+   Hebrew-first, RTL, light only. Token names match the design handoff. */
+
 :root {
-  --bg:        #faf8f4;
-  --panel:     #ffffff;
-  --ink:       #22201d;
-  --ink-soft:  #6d675f;
-  --ink-faint: #a49c92;
-  --line:      #e6e0d6;
-  --accent:    #8a6f4e;
-  --mark:      #ffe9a8;
+  /* colour */
+  --paper:          #f0f3f7;   /* page background */
+  --surface:        #e7ecf3;   /* composer fill */
+  --surface-border: #d3dbe8;   /* composer border */
+  --white:          #ffffff;   /* search field fill */
+  --ink:            #2e2822;   /* primary text, primary button fill */
+  --ink-read:       #332c25;   /* reading body text */
+  --ink-recede:     #5c5348;   /* past-session text while writing */
+  --meta:           #96684f;   /* times, counts, month, day labels */
+  --meta-soft:      #a8887a;   /* "saved" caption, placeholder */
+  --rail:           #dbe2ec;   /* thread line, dividers */
+  --dot:            #8a93a1;   /* session dots */
+  --accent-live:    #5c6b7d;   /* active session dot, time, caret */
+  --hairline:       #dfe5ee;   /* header border */
+  --control-border: #cfd8e3;   /* secondary button, search border */
+  --mark:           #efe2f6;   /* search highlight */
+  --danger:         #c0392b;
+
+  /* type — Space Grotesk carries no Hebrew glyphs at all, so a Hebrew-native
+     face leads the stack and Space Grotesk picks up only the Latin words
+     inside a Hebrew sentence. Swapping the Hebrew face is one line here.
+     JetBrains Mono has no Hebrew either, so it is used strictly for LTR
+     times and counts — never for Hebrew captions. */
+  --font-he:   Assistant;
+  --font-ui:   var(--font-he), "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* the thread rail gutter — the one breakpoint-sensitive measurement */
+  --gutter: 96px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg:        #16151a;
-    --panel:     #1e1d23;
-    --ink:       #e8e5df;
-    --ink-soft:  #a29c93;
-    --ink-faint: #6f6a63;
-    --line:      #2e2c34;
-    --accent:    #c2a578;
-    --mark:      #5a4a1c;
-  }
-}
-
-/* ---------- base ---------- */
 * { box-sizing: border-box; }
 
-html, body {
-  height: 100%;
-  margin: 0;
-}
+html, body { height: 100%; margin: 0; }
 
 body {
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  background: var(--bg);
+  background: var(--paper);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Arial Hebrew", Arial, sans-serif;
-  font-size: 17px;
-  line-height: 1.7;
+  font-family: var(--font-ui);
+  font-size: 16.5px;
+  font-weight: 300;
+  line-height: 1.72;
   -webkit-text-size-adjust: 100%;
 }
 
+/* Latin words inside Hebrew text get Space Grotesk; digits stay lining. */
+:lang(en) { font-family: "Space Grotesk", var(--font-ui); }
+
+/* Only one of the two header halves is live at a time. */
+body.mode-writing [data-when="reading"],
+body.mode-reading [data-when="writing"] { display: none !important; }
+
 /* ---------- top bar ---------- */
+
 .topbar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
-  padding-top: max(10px, env(safe-area-inset-top));
-  border-bottom: 1px solid var(--line);
-  background: var(--bg);
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 14px 30px;
+  padding-top: max(14px, env(safe-area-inset-top));
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper);
 }
 
-.ghost {
+.spacer { flex: 1 1 0; min-width: 0; }
+
+.headDot {
   flex: none;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: transparent;
-  color: var(--ink-soft);
+  background: var(--dot);
+  margin-inline-end: 3px;
+}
+
+.barTitle {
+  flex: none;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-inline-end: 3px;
+}
+
+/* Times, counts, month — terracotta, monospaced, never a control. */
+.meta {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--meta);
+  white-space: nowrap;
+}
+
+/* ---------- month switcher ---------- */
+
+.monthNav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-inline-end: 3px;
+}
+
+.monthNav[hidden] { display: none; }
+
+/* Drawn as a bare chevron, but the hit area is padded out — a 12px glyph is
+   not a target, even with a mouse. Negative margin keeps the drawn gap at 10px. */
+.mArrow {
+  padding: 7px 9px;
+  margin: -7px -5px;
+  border: 0;
+  background: none;
+  color: var(--meta);
   font: inherit;
   font-size: 15px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.ghost:hover { color: var(--ink); }
+.mArrow:hover:not(:disabled) { color: var(--ink); }
+.mArrow:disabled { opacity: .3; cursor: default; }
 
-.search {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--ink);
-  font: inherit;
-  font-size: 15px;
+.mLabel {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--meta);
+  white-space: nowrap;
 }
 
-.search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* ---------- controls ---------- */
+
+.btn {
+  flex: none;
+  padding: 5px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.btn:hover { border-color: var(--meta-soft); }
+
+/* Write is the primary action, so it fills. */
+body.mode-reading .btn {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 500;
+}
+
+body.mode-reading .btn:hover { background: #1c2430; border-color: #1c2430; }
+
+.iconBtn {
+  flex: none;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--meta-soft);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.iconBtn:hover { color: var(--ink); }
+
+.search {
+  flex: none;
+  width: 170px;
+  padding: 6px 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.search::placeholder { color: var(--meta-soft); }
+
+.syncBtn {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--meta);
+  font: inherit;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.syncBtn:hover { border-color: var(--meta-soft); }
+
+/* Keyboard users must always see where they are. */
+:focus-visible {
+  outline: 2px solid var(--meta-soft);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 /* ---------- menu ---------- */
+
 .menu {
   position: absolute;
-  top: 52px;
-  right: 12px;
+  top: 56px;
+  inset-inline-end: 16px;
   z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 8px;
-  width: 230px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  box-shadow: 0 8px 28px rgba(0,0,0,.14);
+  width: 240px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--white);
+  box-shadow: 0 8px 28px rgba(28, 44, 70, .14);
 }
 
 .menu[hidden] { display: none; }
@@ -112,89 +246,138 @@ body {
   background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 15px;
-  text-align: left;
+  font-size: 13.5px;
+  font-weight: 400;
+  text-align: start;
   cursor: pointer;
 }
 
 .menu button:hover,
-.menu .fakebtn:hover { background: var(--bg); }
+.menu .fakebtn:hover { background: var(--paper); }
 
 .menuNote {
   margin: 6px 10px 2px;
-  color: var(--ink-faint);
-  font-size: 13px;
-  line-height: 1.45;
+  color: var(--meta-soft);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ---------- stream ---------- */
+
 .stream {
   flex: 1;
   overflow-y: auto;
-  padding: 22px 22px 8px;
+  padding: 22px 30px 0;
   scroll-padding-bottom: 40px;
 }
 
 .inner {
-  max-width: 680px;
+  max-width: 660px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 
-/* day separator */
-.day {
-  margin: 30px 0 12px;
-  color: var(--ink-faint);
-  font-size: 13px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+body.mode-reading .inner { max-width: 680px; gap: 22px; }
+
+/* The thread rail: one continuous line with the day's sessions hung off it.
+   In RTL the rail sits on the start (right) side, so the dots and times read
+   before the text does. All offsets are logical, so an LTR locale mirrors. */
+.thread {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-inline-start: var(--gutter);
+  border-inline-start: 1px solid var(--rail);
 }
 
-.day:first-child { margin-top: 0; }
+/* While writing, earlier sessions of today recede — but stay readable
+   the moment you look back at them. */
+body.mode-writing .thread {
+  gap: 18px;
+  opacity: .55;
+  transition: opacity .2s ease;
+}
 
-/* one writing session */
+body.mode-writing .thread:hover,
+body.mode-writing .thread:focus-within { opacity: 1; }
+
 .entry {
   position: relative;
-  margin: 0 0 14px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
   cursor: text;
 }
 
-.time {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--ink-faint);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
+body.mode-reading .entry { cursor: default; }
 
-.entry p  { margin: 0 0 .7em; }
-.entry p:last-child  { margin-bottom: 0; }
-.entry ul { margin: 0 0 .7em; padding-inline-start: 1.3em; }
-
-.entry mark { background: var(--mark); color: inherit; border-radius: 3px; }
-
-/* read mode: quieter, more like a page */
-.stream.read .entry {
-  padding: 0 0 0 62px;
-  margin-bottom: 22px;
-  border: 0;
-  background: transparent;
-  cursor: default;
-}
-
-.stream.read .time {
+/* The dot straddles the rail line; the time sits in the gutter beside it. */
+.entry .dot {
   position: absolute;
-  inset-inline-start: 0;
-  top: .25em;
-  margin: 0;
+  inset-inline-start: calc(var(--gutter) * -1 - 5px);
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--dot);
 }
 
-.stream.read .day {
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line);
+.entry .time {
+  position: absolute;
+  inset-inline-start: calc(var(--gutter) * -1 + 12px);
+  top: 1px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--meta);
+}
+
+body.mode-writing .entry .body { color: var(--ink-recede); }
+
+body.mode-reading .entry .body {
+  font-size: 17px;
+  line-height: 1.78;
+  color: var(--ink-read);
+}
+
+.entry .body p  { margin: 0 0 .7em; }
+.entry .body p:last-child { margin-bottom: 0; }
+.entry .body ul { margin: 0 0 .7em; padding-inline-start: 1.3em; }
+.entry .body ul:last-child { margin-bottom: 0; }
+
+.entry mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* day divider — label, then a hairline running to the edge */
+.dayDivider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.dayDivider span {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  color: var(--meta);
+  white-space: nowrap;
+}
+
+.dayDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rail);
+}
+
+.empty {
+  margin-top: 12vh;
+  color: var(--meta-soft);
+  font-size: 15px;
+  text-align: center;
 }
 
 /* editing an older entry in place */
@@ -215,7 +398,6 @@ body {
 
 .entryTools {
   display: flex;
-  justify-content: flex-end;
   gap: 14px;
   margin-top: 6px;
 }
@@ -224,73 +406,97 @@ body {
   border: 0;
   background: none;
   padding: 0;
-  color: var(--ink-faint);
+  color: var(--meta-soft);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 12px;
   cursor: pointer;
 }
 
 .entryTools button:hover { color: var(--ink); }
-.entryTools .danger:hover { color: #c0392b; }
-
-.empty {
-  margin-top: 12vh;
-  color: var(--ink-faint);
-  text-align: center;
-}
+.entryTools .danger:hover { color: var(--danger); }
 
 /* ---------- composer ---------- */
+
 .composerWrap {
   flex: none;
-  padding: 10px 22px 14px;
-  padding-bottom: max(14px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--line);
-  background: var(--bg);
+  padding: 14px 30px 26px;
+  padding-bottom: max(26px, env(safe-area-inset-bottom));
+  background: var(--paper);
+}
+
+body.mode-reading .composerWrap { display: none; }
+
+/* The rail continues behind the composer, thicker, to say "this is live". */
+.composerRail {
+  position: relative;
+  max-width: 660px;
+  margin: 0 auto;
+  padding-inline-start: var(--gutter);
+  border-inline-start: 2px solid var(--dot);
+}
+
+.liveDot {
+  position: absolute;
+  inset-inline-start: -6px;
+  top: 7px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent-live);
+}
+
+.liveTime {
+  position: absolute;
+  inset-inline-start: 14px;
+  top: 1px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent-live);
 }
 
 .composer {
   display: block;
   width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
+  min-height: 196px;
+  max-height: 52dvh;
+  padding: 16px 18px;
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  background: var(--surface);
   color: var(--ink);
+  caret-color: var(--accent-live);
   font: inherit;
-  line-height: 1.7;
+  font-size: 16.5px;
+  font-weight: 300;
+  line-height: 1.72;
   resize: none;
   overflow-y: auto;
-  max-height: 45dvh;
+  box-shadow: 0 6px 18px rgba(28, 44, 70, .07);
 }
 
-.composer:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.composer:focus {
+  outline: none;
+  border-color: var(--meta-soft);
+}
 
-.composerWrap.hidden { display: none; }
-
-/* quiet "saved" confirmation under the writing box */
+/* Hebrew caption, so Assistant — only the clock inside it is monospaced. */
 .status {
-  max-width: 680px;
-  margin: 5px auto 0;
-  height: 1em;
-  color: var(--ink-faint);
-  font-size: 13px;
-  line-height: 1;
-  text-align: right;
-  opacity: 0;
-  transition: opacity .35s ease;
+  margin: 9px 0 0;
+  min-height: 1.2em;
+  color: var(--meta-soft);
+  font-size: 12px;
+  line-height: 1.2;
 }
 
-.status.show { opacity: 1; }
+.status .escHint { white-space: nowrap; }
 
-/* ---------- sync badge ---------- */
-.sync {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.mono {
+  font-family: var(--font-mono);
+  font-size: .95em;
 }
 
 /* ---------- sign-in screen ---------- */
+
 .gate {
   position: fixed;
   inset: 0;
@@ -299,7 +505,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--bg);
+  background: var(--paper);
 }
 
 .gate[hidden] { display: none; }
@@ -314,48 +520,120 @@ body {
 
 .loginBox h1 {
   margin: 0 0 6px;
+  font-family: "Space Grotesk", var(--font-ui);
   font-size: 22px;
-  font-weight: 600;
-  letter-spacing: .01em;
+  font-weight: 500;
 }
 
 .loginBox label {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  color: var(--ink-soft);
-  font-size: 14px;
+  color: var(--meta);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .loginBox input {
   padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--white);
   color: var(--ink);
   font: inherit;
+  font-size: 15px;
+  font-weight: 400;
 }
 
-.loginBox input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.loginBox input:focus { outline: none; border-color: var(--meta-soft); }
 
 .loginBox button {
   margin-top: 4px;
   padding: 11px 14px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--ink);
-  color: var(--bg);
+  color: var(--paper);
   font: inherit;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
 }
 
+.loginBox button:hover:not(:disabled) { background: #1c2430; }
 .loginBox button:disabled { opacity: .5; cursor: default; }
 
 .loginError {
   margin: 0;
   min-height: 1.2em;
-  color: #c0392b;
-  font-size: 14px;
+  color: var(--danger);
+  font-size: 13px;
   line-height: 1.4;
+}
+
+/* ---------- narrow screens ---------- */
+
+@media (max-width: 720px) {
+  :root { --gutter: 62px; }
+
+  body { font-size: 15px; line-height: 1.7; }
+
+  .topbar { padding: 10px 20px 12px; padding-top: max(10px, env(safe-area-inset-top)); }
+
+  .barTitle { font-size: 14.5px; }
+  .meta { font-size: 11px; }
+
+  /* the month switcher gets its own centred row under the header */
+  .monthNav {
+    order: 10;
+    flex-basis: 100%;
+    justify-content: center;
+    padding: 6px 0 0;
+    margin: 0;
+  }
+
+  .mLabel { font-size: 14px; }
+
+  /* tap targets — the mock draws these tighter than a finger can hit */
+  .btn, .search, .syncBtn { min-height: 44px; padding-block: 5px; font-size: 13px; }
+  .btn { padding-inline: 13px; }
+  .mArrow, .iconBtn { min-width: 44px; min-height: 44px; }
+
+  .search { width: auto; flex: 1 1 120px; min-width: 90px; }
+  .spacer { flex: 1 1 0; }
+
+  /* Not enough width for the counts and the full stamp beside the buttons.
+     The composer already shows the live time, and the counts are decorative. */
+  .stampTime,
+  #countWriting,
+  #countReading { display: none; }
+
+  .stream { padding: 18px 20px 0; }
+  body.mode-reading .inner { gap: 18px; }
+
+  .thread { gap: 18px; }
+  .entry .dot { top: 6px; width: 8px; height: 8px; inset-inline-start: calc(var(--gutter) * -1 - 5px); }
+  .entry .time { top: 0; font-size: 11px; inset-inline-start: calc(var(--gutter) * -1 + 10px); }
+
+  body.mode-reading .entry .body { font-size: 15.5px; line-height: 1.75; }
+
+  .dayDivider span { font-size: 12px; }
+
+  .composerWrap { padding: 12px 20px 22px; padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+  .composer { min-height: 232px; padding: 14px 15px; font-size: 15px; line-height: 1.7; }
+  .liveTime { inset-inline-start: 12px; top: 0; font-size: 11px; }
+  .liveDot { top: 6px; }
+  .status { font-size: 10.5px; margin-top: 8px; }
+  .status .escHint { display: none; }   /* no Esc key on a phone */
+}
+
+/* Below ~380px keep the rail — it carries the identity — and let the text
+   column take the squeeze instead. */
+@media (max-width: 380px) {
+  .stream, .topbar { padding-inline: 16px; }
+  .composerWrap { padding-inline: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
 }
