@@ -20,14 +20,24 @@ for a subscription.
 - **Saves as you type.** There is deliberately no Save button.
 - **Read mode** turns the stream into a clean page, times in the margin.
 - **Instant offline search** across everything you have ever written.
+- **Syncs across devices.** Write on the laptop in the morning, read it on the
+  phone at night. Works offline and catches up when the signal returns.
 - **Export** to plain Markdown, or a JSON backup you can restore.
 - **No streaks, no reminders, no "you missed a day."**
 
 ## Privacy
 
-Entries are stored in your own browser (`localStorage`) and never leave your
-device. There is no server, no account, and no analytics. This repository
-contains only the app's code — no diary content is in it, and none ever will be.
+Entries live behind an email and password, and every row is scoped to the
+account that wrote it by Postgres row level security — a signed-out visitor
+reading the database directly gets an empty list, and writing is rejected.
+Sign-ups are disabled, so no second account can exist. There are no analytics.
+This repository contains only the app's code — no diary content is in it, and
+none ever will be.
+
+The Supabase URL and publishable key are committed here deliberately. A
+publishable key is meant to be public in browser apps: it identifies the
+project but grants nothing without a valid session. The password is what
+protects the diary.
 
 ## Design decisions
 
@@ -58,8 +68,20 @@ python3 -m http.server 4599
 Then open `http://localhost:4599`. Opening `index.html` directly from Finder
 will not work reliably — browsers restrict storage on `file://` addresses.
 
+## How sync works
+
+Local-first. Every keystroke is saved to the browser before anything is sent,
+so the app works with no signal and never blocks on the network.
+
+Each change stamps an `updated_at` and joins an upload queue; the queue drains
+in the background and retries on failure. Incoming rows only win if they are
+newer. Deletes leave a tombstone rather than removing the row, so deleting on
+the phone actually deletes on the laptop instead of the entry reappearing on
+the next sync.
+
 ## Status
 
-Phase 1 — works on one device, stores locally.
-Phase 2 — sync across phone and laptop.
-Phase 3 — optional passphrase encryption.
+Phase 1 — local-only journal. **Done.**
+Phase 2 — sync across phone and laptop, behind a login. **Done.**
+Phase 3 — optional passphrase encryption, so the text is unreadable even to
+the database. Not started.
