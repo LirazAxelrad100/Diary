@@ -50,6 +50,16 @@ than pasted in from the prototype.
 app is laid out RTL, with clock times isolated back to LTR so `07:14` never
 reverses.
 
+Direction is set once, on the `<html>` element. The stylesheet contains no
+`left` or `right` properties at all — every rule uses logical properties
+(`margin-inline-start`, `inset-inline-end`), so the layout mirrors itself from
+that single attribute instead of from a second sheet of RTL overrides. Entry
+text is `dir="auto"` per paragraph, so a Hebrew entry with an English sentence
+inside it sits correctly without either language being the default.
+
+The interface copy is still Hebrew in the markup. A full English build would
+mean extracting those strings; the layout would not need to change.
+
 **The specified typeface had no Hebrew in it.** The handoff called for Space
 Grotesk throughout; it ships Latin, Latin-ext and Vietnamese only, so almost
 every character in the app would have fallen back to whatever the system
