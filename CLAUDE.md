@@ -76,6 +76,36 @@ could not move it. Both bounds now scale with the visible area
 keyboard up — that is the only way both bounds fit; raise the `0.30` if it ever
 feels too short.
 
+**Update 2026-09-03 (later) — the keyboard blink, fixed and confirmed on the
+phone.** Tapping the composer made the whole app vanish for about 400ms: the
+header went first, then the entire page went blank, then it snapped back. A
+screen recording pulled apart frame by frame showed the sequence — normal at
+2.2s, header gone at 2.3s, fully blank at 2.5s, correct again at 2.6s.
+
+*Cause.* Height and offset were being applied at different times. The height
+was tracked live on `resize`, but the offset that cancels the pan waited for
+the 350ms settle. In between, a body already shrunk to keyboard height was
+still pinned to the top of a still-full-height layout viewport — i.e. above the
+visible window. Closing had the mirror version of the same fault: the height
+grew back instantly while the offset stayed stale at its keyboard-open value.
+
+*Fix.* The two values must land in the same frame, always. On `resize` the
+offset is now applied immediately whenever the viewport is shrinking, and for
+700ms after focus enters *or leaves* a field, both values are re-applied every
+frame from the same reading (`trackPan`). The delayed settle still runs
+afterwards and has the last word.
+
+*Why this is not the "floating" bug coming back.* That one applied `offsetTop`
+alone, off the `scroll` event, while the height was tracked separately — the
+two arrived out of step, so the body was repeatedly the wrong size for where it
+had been put. Tracking both together is the opposite: the body exactly fills
+the visible window at every instant. Verified by stepping a simulated close
+frame by frame — height + offset summed to the full screen height at every
+step (400+320, 500+220, 620+100, 700+20, 720+0).
+
+Confirmed on the phone: no flash opening, no flash closing, no float, and the
+box stays put while writing and across the reading-view switch.
+
 - `index.html` / `style.css` / `app.js` — the whole app
 - `config.js` — Supabase URL + publishable key (committed on purpose, see below)
 - `schema.sql` — run once in the Supabase SQL editor
@@ -139,7 +169,6 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
-- Real-phone check of the redesign (keyboard + safe area).
 - Phase 4 (optional): passphrase encryption via Web Crypto before upload, so
   the text is unreadable even to Supabase.
 
@@ -206,11 +235,18 @@ Worth re-checking with the designer if the look is ever revisited:
   document scroll, `window.scrollTo` cannot correct it — and blocking document
   scroll alone only converts the symptom from "scrolled" to "floating". Any new
   full-height element must scroll internally too.
-- **Do not track `visualViewport.offsetTop` live.** iOS animates the keyboard
-  shut over ~250ms and emits intermediate offsets the whole way; applying each
-  one moves the page by hand while the browser is already settling it, which
-  reads as the screen floating. Correct once after it settles instead — see
-  `settleAppViewport()`.
+- **Never apply the viewport height and the pan offset at different times.**
+  This is the single rule behind two opposite-looking bugs, and the earlier
+  version of this note ("do not track `offsetTop` live") had it wrong — it
+  banned the technique instead of the mismatch, which is why the blink took a
+  second round to fix. The body's height comes from `visualViewport.height` and
+  its position from `visualViewport.offsetTop`; the two are locked together
+  (the offset is whatever the shrunken height leaves above the fold), so
+  applying one without the other always puts the body somewhere it does not
+  fit. Update both from the same reading in the same frame — `trackPan()` — and
+  live tracking is not only safe, it is what removes the flicker. Apply the
+  offset alone, off the `scroll` event, and the screen floats; apply the height
+  alone and the app blinks off screen entirely.
 - Do not open `index.html` via `file://` — browsers restrict storage there and
   entries can be lost. Use the Pages URL, or serve the folder over HTTP.
 - Never commit exported diary files. `.gitignore` already blocks
