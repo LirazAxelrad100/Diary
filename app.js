@@ -552,19 +552,35 @@ const vv = window.visualViewport;
 
 function syncAppViewport() {
   if (!vv) return;
+  // A hidden or backgrounded page can report 0 here; writing that through
+  // would collapse the app to nothing. Keep the last good height instead.
+  if (!(vv.height > 0)) return;
   document.documentElement.style.setProperty('--app-height', `${vv.height}px`);
-  document.body.style.insetBlockStart = `${vv.offsetTop}px`;
+}
+
+/* The pan offset is deliberately NOT tracked live. iOS animates the keyboard
+   shut over roughly a quarter of a second, emitting a stream of intermediate
+   offsets; applying each one moves the page by hand while the browser is
+   already settling it correctly, which reads as the whole screen floating.
+   Instead the offset is corrected once, after the animation has finished, and
+   only if a real pan is still left over — which on a browser that honours
+   interactive-widget=resizes-content is never. */
+let settleTimer;
+
+function settleAppViewport() {
+  if (!vv) return;
+  syncAppViewport();
+  document.body.style.insetBlockStart = vv.offsetTop ? `${vv.offsetTop}px` : '';
 }
 
 if (vv) {
-  vv.addEventListener('resize', syncAppViewport);
-  vv.addEventListener('scroll', syncAppViewport);   // fires while iOS pans
+  vv.addEventListener('resize', () => {
+    syncAppViewport();                 // height may change; safe to track live
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(settleAppViewport, 350);
+  });
   syncAppViewport();
 }
-
-// The keyboard's Done key closes it without moving focus, so focusout alone is
-// not enough — but when focus does leave, re-pin on the next frame.
-document.addEventListener('focusout', () => requestAnimationFrame(syncAppViewport));
 
 // Leaving the page ends the session and pushes what's queued.
 document.addEventListener('visibilitychange', () => {
