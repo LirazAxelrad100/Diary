@@ -550,13 +550,27 @@ composer.addEventListener('keydown', (e) => {
    costs nothing. */
 const vv = window.visualViewport;
 
+let tallestViewport = 0;
+
 function syncAppViewport() {
   if (!vv) return;
   // A hidden or backgrounded page can report 0 here; writing that through
   // would collapse the app to nothing. Keep the last good height instead.
   if (!(vv.height > 0)) return;
   document.documentElement.style.setProperty('--app-height', `${vv.height}px`);
+
+  // The keyboard is the only thing that takes a large bite out of the visible
+  // height, so a viewport well short of the tallest one seen means it is open.
+  tallestViewport = Math.max(tallestViewport, vv.height);
+  document.body.classList.toggle('kb-open', vv.height < tallestViewport - 100);
 }
+
+// Rotating changes the viewport as much as the keyboard does, so the tallest
+// seen in portrait would make every landscape look like an open keyboard.
+window.addEventListener('orientationchange', () => {
+  tallestViewport = 0;
+  setTimeout(syncAppViewport, 300);   // after the rotation settles
+});
 
 /* The pan offset is deliberately NOT tracked live. iOS animates the keyboard
    shut over roughly a quarter of a second, emitting a stream of intermediate

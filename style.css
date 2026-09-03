@@ -645,6 +645,16 @@ body.mode-reading .composerWrap { display: none; }
     padding: 14px 15px;
     line-height: 1.7;
   }
+
+  /* Keyboard up: the entries behind it are hidden anyway, so the composer
+     takes what is left and holds it — one stable pane instead of a box that
+     halves on the first keystroke and creeps back as you type. Equal min and
+     max make autoGrow's inline height a no-op, so no JS change is needed. The
+     150px covers the top bar, the caption and the wrapper's own padding. */
+  body.kb-open .composer {
+    min-height: calc(var(--app-height, 100dvh) - 150px);
+    max-height: calc(var(--app-height, 100dvh) - 150px);
+  }
   .liveTime { inset-inline-start: 12px; top: 0; font-size: 11px; }
   .liveDot { top: 6px; }
   .status { font-size: 10.5px; margin-top: 8px; }
