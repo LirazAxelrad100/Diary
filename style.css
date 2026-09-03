@@ -468,9 +468,12 @@ body.mode-reading .composerWrap { display: none; }
 .composer {
   display: block;
   width: 100%;
-  min-height: 196px;
-  /* Against the visible area, so the cap still means something with the
-     keyboard open — 52dvh would measure the full screen behind it. */
+  /* Both bounds scale with the visible area, never just the max. min-height
+     wins over max-height in CSS, so a fixed min plus a shrinking max freezes
+     the box at the min and autoGrow can no longer move it — which is what
+     happens with the keyboard open, where 52% of the visible height falls
+     under the resting size. */
+  min-height: min(196px, calc(var(--app-height, 100dvh) * 0.30));
   max-height: calc(var(--app-height, 100dvh) * 0.52);
   padding: 16px 18px;
   border: 1px solid var(--surface-border);
@@ -635,7 +638,13 @@ body.mode-reading .composerWrap { display: none; }
   .dayDivider span { font-size: 12px; }
 
   .composerWrap { padding: 12px 20px 22px; padding-bottom: max(22px, env(safe-area-inset-bottom)); }
-  .composer { min-height: 232px; padding: 14px 15px; font-size: 15px; line-height: 1.7; }
+  /* font-size is set with the other editable fields below — 16px, forced by
+     iOS zoom, not by the type scale. */
+  .composer {
+    min-height: min(232px, calc(var(--app-height, 100dvh) * 0.30));
+    padding: 14px 15px;
+    line-height: 1.7;
+  }
   .liveTime { inset-inline-start: 12px; top: 0; font-size: 11px; }
   .liveDot { top: 6px; }
   .status { font-size: 10.5px; margin-top: 8px; }

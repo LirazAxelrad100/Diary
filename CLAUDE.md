@@ -60,8 +60,21 @@ Reading-view margins widened at the same time (`.stream` 20px → 26px, and 16px
 because it is a tight four-control row and extra padding there clips the
 `קריאה` title.
 
-**Still unrun:** original checks 2, 4, 5 and 6 — composer growth with many
-lines, Dynamic Island clearance, home-indicator clearance, landscape.
+**Phone checks — all passed on 2026-09-03.** Composer stays above the keyboard,
+header clear of the Dynamic Island, caption clear of the home indicator,
+landscape fine. (The home indicator auto-hides in a home-screen app and returns
+on touch; `env(safe-area-inset-bottom)` reserves its space either way, so
+nothing shifts when it fades.)
+
+One regression was found and fixed during those checks: pressing Enter did not
+grow the composer. Changing its cap from `52dvh` to a share of `--app-height`
+had made the cap smaller than `min-height` whenever the keyboard was open, and
+**`min-height` beats `max-height`**, so the box froze at the min and `autoGrow`
+could not move it. Both bounds now scale with the visible area
+(`min-height: min(232px, 30%)`, `max-height: 52%`), verified growing at 812px,
+400px and 300px of visible height. Expect a smaller resting box with the
+keyboard up — that is the only way both bounds fit; raise the `0.30` if it ever
+feels too short.
 
 - `index.html` / `style.css` / `app.js` — the whole app
 - `config.js` — Supabase URL + publishable key (committed on purpose, see below)
@@ -174,6 +187,10 @@ Worth re-checking with the designer if the look is ever revisited:
   no error. Put the LTR isolation on an inner `<bdi>` and leave the positioned
   element in the parent's direction. Three places rely on this: session times,
   the composer's live time, and the header stamp.
+- **`min-height` beats `max-height`.** Any element whose max is derived from
+  `--app-height` needs its min derived from it too, or the min silently wins
+  when the viewport shrinks and the element freezes — no error, no visual clue
+  that a cap is involved. This is what broke composer growth once already.
 - **Never let an editable field drop below 16px on mobile.** `.composer`,
   `.editor`, `.search` and the sign-in inputs are pinned to 16px in the
   `max-width: 720px` block. Below that, iOS zooms the entire page on focus and
