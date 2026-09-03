@@ -113,6 +113,16 @@ Worth re-checking with the designer if the look is ever revisited:
 - **Automatic timestamps.** She was already typing `אחהצ` / `ערב` by hand.
 - **No streaks, no reminders, no "you missed a day."** Deliberate.
 - **Empty days are not shown.**
+- **No language/direction toggle — documented instead (2026-09-03).** The idea
+  was raised only for PR/portfolio value (someone forking the repo), not
+  because English is wanted. A visible switcher would add a control to test in
+  both directions for no personal benefit, so the README's Design section now
+  describes the RTL architecture instead. Verified true before writing it:
+  `dir="rtl"` appears once, on `<html>`, and `style.css` has zero physical
+  `left`/`right` properties — 19 logical ones. The README also states the
+  honest limit, that UI copy is still hardcoded Hebrew (~29 lines across
+  `index.html` and `app.js`). If English is ever actually wanted, extracting
+  those strings is the work; the layout needs no change.
 
 ## Avoid
 - **Never put `dir` and a logical property on the same element.**

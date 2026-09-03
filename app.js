@@ -538,6 +538,21 @@ composer.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { commitDraft(); composer.blur(); }
 });
 
+/* iOS scrolls the document to lift a focused field above the keyboard and does
+   not scroll back when the keyboard closes — the header ends up hidden under
+   the status bar. The document never needs to scroll here, so returning it to
+   zero is always the right answer. focusout covers dismissing the keyboard by
+   tapping away; the visualViewport resize covers the "Done" key, which closes
+   the keyboard without moving focus. */
+function resetPageScroll() {
+  if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+}
+
+document.addEventListener('focusout', () => requestAnimationFrame(resetPageScroll));
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', resetPageScroll);
+}
+
 // Leaving the page ends the session and pushes what's queued.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {

@@ -35,7 +35,11 @@
 
 * { box-sizing: border-box; }
 
-html, body { height: 100%; margin: 0; }
+/* The app is exactly one viewport tall and scrolls inside .stream, so the
+   document itself must never scroll. Without this, iOS scrolls the whole page
+   up to clear the keyboard and does not put it back when the keyboard closes,
+   leaving the top bar stranded under the status bar. */
+html, body { height: 100%; margin: 0; overflow: hidden; }
 
 body {
   display: flex;
@@ -608,7 +612,9 @@ body.mode-reading .composerWrap { display: none; }
   #countWriting,
   #countReading { display: none; }
 
-  .stream { padding: 18px 20px 0; }
+  /* Wider than the top bar's inset on purpose: the bar is a row of controls
+     that needs the width, the text is a column that needs the breathing room. */
+  .stream { padding: 18px 26px 0; }
   body.mode-reading .inner { gap: 18px; }
 
   .thread { gap: 18px; }
@@ -630,7 +636,8 @@ body.mode-reading .composerWrap { display: none; }
 /* Below ~380px keep the rail — it carries the identity — and let the text
    column take the squeeze instead. */
 @media (max-width: 380px) {
-  .stream, .topbar { padding-inline: 16px; }
+  .topbar { padding-inline: 16px; }
+  .stream { padding-inline: 22px; }
   .composerWrap { padding-inline: 16px; }
 }
 
