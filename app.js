@@ -558,27 +558,82 @@ function syncAppViewport() {
   document.documentElement.style.setProperty('--app-height', `${vv.height}px`);
 }
 
-/* The pan offset is deliberately NOT tracked live. iOS animates the keyboard
-   shut over roughly a quarter of a second, emitting a stream of intermediate
-   offsets; applying each one moves the page by hand while the browser is
-   already settling it correctly, which reads as the whole screen floating.
-   Instead the offset is corrected once, after the animation has finished, and
-   only if a real pan is still left over — which on a browser that honours
-   interactive-widget=resizes-content is never. */
+/* Opening and closing the keyboard need opposite treatment.
+
+   Closing: the pan offset is deliberately NOT tracked live. iOS animates the
+   keyboard shut over roughly a quarter of a second, emitting a stream of
+   intermediate offsets; applying each one moves the page by hand while the
+   browser is already settling it correctly, which reads as the whole screen
+   floating. So the offset is corrected once, after the animation has finished.
+
+   Opening: the height and the offset must land in the SAME frame. The height
+   is safe to track live, but a short body still pinned to the top of the
+   full-height layout viewport sits above the visible window — the header goes
+   first, then the entire app, until the correction arrives. Deferring the
+   offset by 350ms here is what made the app blink off screen on every tap. */
 let settleTimer;
+let lastVvHeight = vv ? vv.height : 0;
+
+function applyPan() {
+  if (!vv) return;
+  document.body.style.insetBlockStart = vv.offsetTop ? `${vv.offsetTop}px` : '';
+}
 
 function settleAppViewport() {
   if (!vv) return;
   syncAppViewport();
-  document.body.style.insetBlockStart = vv.offsetTop ? `${vv.offsetTop}px` : '';
+  applyPan();
+}
+
+/* iOS also pans *between* resize events, so correcting only on resize still
+   leaves gaps the eye catches. For the length of the opening animation only,
+   height and offset are re-applied every frame instead — which follows the
+   browser rather than fighting it, because the field has just taken focus and
+   the keyboard is on its way up. The window is bounded and is cancelled the
+   moment focus leaves, so the closing animation is never tracked live: that is
+   the case the delayed settle above exists for. */
+const PAN_TRACK_MS = 700;
+let panRaf = 0;
+let trackUntil = 0;
+
+function trackPan() {
+  syncAppViewport();
+  applyPan();
+  panRaf = performance.now() < trackUntil ? requestAnimationFrame(trackPan) : 0;
+}
+
+function startPanTracking() {
+  trackUntil = performance.now() + PAN_TRACK_MS;
+  if (!panRaf) panRaf = requestAnimationFrame(trackPan);
+}
+
+function stopPanTracking() {
+  trackUntil = 0;
+  if (panRaf) { cancelAnimationFrame(panRaf); panRaf = 0; }
+}
+
+function opensKeyboard(el) {
+  return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT');
 }
 
 if (vv) {
   vv.addEventListener('resize', () => {
+    const shrinking = vv.height < lastVvHeight - 1;   // keyboard coming up
+    lastVvHeight = vv.height;
     syncAppViewport();                 // height may change; safe to track live
+    if (shrinking) applyPan();
     clearTimeout(settleTimer);
     settleTimer = setTimeout(settleAppViewport, 350);
   });
+
+  document.addEventListener('focusin', (e) => {
+    if (opensKeyboard(e.target)) startPanTracking();
+  });
+
+  document.addEventListener('focusout', (e) => {
+    if (opensKeyboard(e.target)) stopPanTracking();
+  });
+
   syncAppViewport();
 }
 
