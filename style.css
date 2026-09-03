@@ -640,6 +640,18 @@ body.mode-reading .composerWrap { display: none; }
   .liveDot { top: 6px; }
   .status { font-size: 10.5px; margin-top: 8px; }
   .status .escHint { display: none; }   /* no Esc key on a phone */
+
+  /* iOS zooms the whole page in when a text field smaller than 16px takes
+     focus, and does not reliably zoom back out on blur. The page is left
+     scaled: clipped at the inline edges, drifting, and it stays that way
+     across reading and writing until a pinch or a reload. 16px is a platform
+     threshold rather than a design decision, so it overrides the type scale —
+     for editable fields only, never for the surrounding chrome. */
+  .composer,
+  .editor,
+  .search,
+  input[type="email"],
+  input[type="password"] { font-size: 16px; }
 }
 
 /* Below ~380px keep the rail — it carries the identity — and let the text
