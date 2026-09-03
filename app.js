@@ -586,12 +586,19 @@ function settleAppViewport() {
 }
 
 /* iOS also pans *between* resize events, so correcting only on resize still
-   leaves gaps the eye catches. For the length of the opening animation only,
-   height and offset are re-applied every frame instead — which follows the
-   browser rather than fighting it, because the field has just taken focus and
-   the keyboard is on its way up. The window is bounded and is cancelled the
-   moment focus leaves, so the closing animation is never tracked live: that is
-   the case the delayed settle above exists for. */
+   leaves gaps the eye catches. For the length of the keyboard animation —
+   opening or closing — height and offset are re-applied every frame instead.
+
+   This is not the live tracking that once made the screen float. That applied
+   offsetTop on its own, from the scroll event, while the height was tracked
+   separately: the two arrived out of step and the body was repeatedly the
+   wrong size for where it had been put. Here both come from the same reading
+   in the same frame, so the body exactly fills the visible window at every
+   instant of the animation — which is also why the two viewports stay locked
+   (offsetTop is whatever the shrunken height leaves above the fold).
+
+   The window is short and starts only on focus entering or leaving a field, so
+   nothing is tracked while the app is simply sitting there. */
 const PAN_TRACK_MS = 700;
 let panRaf = 0;
 let trackUntil = 0;
@@ -626,12 +633,20 @@ if (vv) {
     settleTimer = setTimeout(settleAppViewport, 350);
   });
 
+  // Both edges of the keyboard animation: coming up on focus, going down on
+  // blur. The delayed settle still runs afterwards and has the last word.
   document.addEventListener('focusin', (e) => {
     if (opensKeyboard(e.target)) startPanTracking();
   });
 
   document.addEventListener('focusout', (e) => {
-    if (opensKeyboard(e.target)) stopPanTracking();
+    if (opensKeyboard(e.target)) startPanTracking();
+  });
+
+  // A backgrounded page gets no frames; drop the loop rather than leave it
+  // pending, and let the settle correct things when the page comes back.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopPanTracking();
   });
 
   syncAppViewport();
