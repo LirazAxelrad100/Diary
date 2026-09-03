@@ -478,6 +478,13 @@ let saveTimer = null;
 let idleTimer = null;
 
 function autoGrow(el) {
+  // A box pinned to one size (the composer on phones) cannot grow, so writing
+  // a height only forces a reflow — which iOS answers by scrolling to the
+  // caret, a visible jump on the first keystroke. Asking the element whether
+  // it is pinned keeps this true wherever the CSS decides to pin one.
+  const box = getComputedStyle(el);
+  if (box.minHeight === box.maxHeight) return;
+
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
 }
