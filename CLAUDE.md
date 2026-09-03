@@ -22,6 +22,21 @@ below). Desktop checked and approved; **a real-phone pass is still outstanding**
 — responsive mode does not exercise the iOS keyboard against `100dvh` or the
 safe-area insets.
 
+**Update 2026-09-03 — first real-phone pass done, one bug found and fixed.**
+Composer stays above the keyboard (good), but dismissing the keyboard left the
+page scrolled, stranding the top bar under the status bar. Cause: `html, body`
+had no `overflow` rule, so the document itself could scroll. Fixed by
+`overflow: hidden` on `html, body` plus `resetPageScroll()` in `app.js` on
+`focusout` and on `visualViewport` resize — two handlers because tapping away
+fires `focusout` while the keyboard's Done key closes it without moving focus.
+Reading-view margins widened at the same time (`.stream` 20px → 26px, and 16px
+→ 22px below 380px); the top bar was deliberately left at its old inset,
+because it is a tight four-control row and extra padding there clips the
+`קריאה` title. **Re-check on the phone still pending**, along with original
+checks 2, 4, 5 and 6 (composer growth, Dynamic Island, home indicator,
+landscape). The fix is reasoned, not proven — no simulator here produces a real
+iOS keyboard.
+
 - `index.html` / `style.css` / `app.js` — the whole app
 - `config.js` — Supabase URL + publishable key (committed on purpose, see below)
 - `schema.sql` — run once in the Supabase SQL editor
@@ -133,6 +148,12 @@ Worth re-checking with the designer if the look is ever revisited:
   no error. Put the LTR isolation on an inner `<bdi>` and leave the positioned
   element in the parent's direction. Three places rely on this: session times,
   the composer's live time, and the header stamp.
+- **Never let the document itself scroll.** The app is exactly one viewport
+  tall and scrolls inside `.stream`; `html, body { overflow: hidden }` is
+  load-bearing, not tidiness. Without it iOS scrolls the whole page up to clear
+  the keyboard and never scrolls back, so the top bar ends up under the status
+  bar — and because the body is `100dvh`, nothing about the layout reveals the
+  cause. Any new full-height element must scroll internally too.
 - Do not open `index.html` via `file://` — browsers restrict storage there and
   entries can be lost. Use the Pages URL, or serve the folder over HTTP.
 - Never commit exported diary files. `.gitignore` already blocks

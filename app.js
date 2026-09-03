@@ -538,20 +538,33 @@ composer.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { commitDraft(); composer.blur(); }
 });
 
-/* iOS scrolls the document to lift a focused field above the keyboard and does
-   not scroll back when the keyboard closes — the header ends up hidden under
-   the status bar. The document never needs to scroll here, so returning it to
-   zero is always the right answer. focusout covers dismissing the keyboard by
-   tapping away; the visualViewport resize covers the "Done" key, which closes
-   the keyboard without moving focus. */
-function resetPageScroll() {
-  if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+/* iOS does not shrink the layout viewport when the keyboard opens. It shrinks
+   the *visual* viewport and pans it over a still-full-height page, so the
+   header slides out of sight above the fold. That offset is not document
+   scroll — window.scrollTo cannot correct it — so the body is pinned to the
+   visual viewport instead: --app-height gives it the visible height, and
+   inset-block-start cancels the pan.
+
+   Where the browser honours interactive-widget=resizes-content (see the
+   viewport meta) the two viewports already agree, offsetTop stays 0, and this
+   costs nothing. */
+const vv = window.visualViewport;
+
+function syncAppViewport() {
+  if (!vv) return;
+  document.documentElement.style.setProperty('--app-height', `${vv.height}px`);
+  document.body.style.insetBlockStart = `${vv.offsetTop}px`;
 }
 
-document.addEventListener('focusout', () => requestAnimationFrame(resetPageScroll));
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', resetPageScroll);
+if (vv) {
+  vv.addEventListener('resize', syncAppViewport);
+  vv.addEventListener('scroll', syncAppViewport);   // fires while iOS pans
+  syncAppViewport();
 }
+
+// The keyboard's Done key closes it without moving focus, so focusout alone is
+// not enough — but when focus does leave, re-pin on the next frame.
+document.addEventListener('focusout', () => requestAnimationFrame(syncAppViewport));
 
 // Leaving the page ends the session and pushes what's queued.
 document.addEventListener('visibilitychange', () => {

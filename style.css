@@ -44,7 +44,14 @@ html, body { height: 100%; margin: 0; overflow: hidden; }
 body {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* Pinned to the visual viewport, not the layout viewport. iOS keeps the
+     layout viewport full-height when the keyboard opens and pans a smaller
+     visual viewport over it, so a plain 100dvh body drifts out of view.
+     --app-height and the offset are kept in sync by syncAppViewport(). */
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: var(--app-height, 100dvh);
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-ui);
@@ -462,7 +469,9 @@ body.mode-reading .composerWrap { display: none; }
   display: block;
   width: 100%;
   min-height: 196px;
-  max-height: 52dvh;
+  /* Against the visible area, so the cap still means something with the
+     keyboard open — 52dvh would measure the full screen behind it. */
+  max-height: calc(var(--app-height, 100dvh) * 0.52);
   padding: 16px 18px;
   border: 1px solid var(--surface-border);
   border-radius: 14px;
