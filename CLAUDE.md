@@ -120,6 +120,28 @@ Read mode, offline search with highlighting, export `.md`, backup/restore JSON,
 light + dark, mobile layout, home-screen icon, sign-in screen, cross-device
 sync with an offline queue.
 
+**Update 2026-09-20 — month arrows no longer stop at today.** `nextMonth` was
+disabled whenever `visibleMonth >= thisMonth()`, so an entry stamped into a
+*future* month — which only needs a device clock running fast — sat in a month
+the arrows could never reach. It now also checks `hasEntriesAfter()`, the
+mirror of the existing `hasEntriesBefore()`. Verified in a browser with fake
+Aug/Sep/Oct entries: the arrow was dead before the change and steps to October
+after, while a diary with nothing in the future still stops at this month.
+
+This came out of a false alarm worth recording, because it will come up again:
+Liraz went looking for August entries and could not reach them. **There are
+none — the diary's first commit is 2026-09-01, and every entry is stamped
+`new Date()` at write time, so nothing in it can predate that.** Her August
+writing is in OneNote. Before hunting for a navigation bug, check whether the
+data can exist at all. The `›` arrow answers this directly: it is disabled
+exactly when nothing exists before the visible month.
+
+Second trap hit during the same session: **localhost and the live site are
+separate origins with separate `localStorage`.** A stale snapshot on
+`localhost:4599` looks like missing data. Check the Vercel URL, where the
+sign-in and the Supabase pull actually happen, before concluding anything about
+what is or is not stored.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
@@ -208,6 +230,13 @@ Worth re-checking with the designer if the look is ever revisited:
   those strings is the work; the layout needs no change.
 
 ## Avoid
+- **Never bound navigation by the clock alone.** Anything that decides which
+  months are reachable must be bounded by the *data*, not by `thisMonth()`. A
+  cap at today assumes no entry can be stamped later than now, which a fast
+  device clock breaks — and the result is silent: the entry exists, search
+  finds it, but no arrow leads to it. Both directions are now data-bounded
+  (`hasEntriesBefore` / `hasEntriesAfter`), with today kept only as a floor so
+  the current month always stays reachable.
 - **Never put `dir` and a logical property on the same element.**
   `inset-inline-start`, `margin-inline-*` and `padding-inline-*` resolve against
   the direction of the element they are written on — so `dir="ltr"` on a
