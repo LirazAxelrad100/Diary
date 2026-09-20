@@ -237,6 +237,11 @@ function hasEntriesBefore(mo) {
   return live().some((e) => monthKey(monthOf(e.ts)) < k);
 }
 
+function hasEntriesAfter(mo) {
+  const k = monthKey(mo);
+  return live().some((e) => monthKey(monthOf(e.ts)) > k);
+}
+
 function entryHtml(e) {
   // The <bdi> keeps the clock LTR without setting dir on the positioned span —
   // dir on that span would flip which side inset-inline-start means.
@@ -293,8 +298,11 @@ function updateChrome(shown) {
   if (readMode) {
     $('monthNav').hidden = !!query;
     $('monthLabel').textContent = monthLabel(visibleMonth);
-    // In RTL ‹ moves forward, so it stops at the month we are actually in.
-    $('nextMonth').disabled = monthKey(visibleMonth) >= monthKey(thisMonth());
+    // In RTL ‹ moves forward. It normally stops at the month we are actually
+    // in, but never before an entry: a wrong device clock can stamp writing
+    // into a future month, and capping at today would strand it unreachable.
+    $('nextMonth').disabled =
+      monthKey(visibleMonth) >= monthKey(thisMonth()) && !hasEntriesAfter(visibleMonth);
     $('prevMonth').disabled = !hasEntriesBefore(visibleMonth);
     const noun = shown === 1 ? 'entry' : 'entries';
     $('countReading').textContent = query
