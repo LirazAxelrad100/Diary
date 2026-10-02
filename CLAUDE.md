@@ -142,6 +142,28 @@ separate origins with separate `localStorage`.** A stale snapshot on
 sign-in and the Supabase pull actually happen, before concluding anything about
 what is or is not stored.
 
+**Update 2026-10-02 — month picker in reading view.** With two months of
+writing, stepping one month at a time by arrow was neither clear nor quick.
+The month name (`#monthLabel`, now a `<button>`) opens a strip under the
+header (`#monthStrip`) listing **only months that have entries**
+(`monthsWithEntries()`), grouped by year with a rail-coloured divider, oldest
+on the right. Tap a month to jump there; the strip closes on re-tap, outside
+click, Esc, search, or switching to writing. Arrows kept for single steps.
+Confirmed working by Liraz.
+
+*Design choices.* The header looks exactly as before — no chevron added; a
+soft `--surface` tint on hover / while open is the only hint. Chosen over a
+popover list (A) and an always-visible 12-month year strip (B): the strip
+pushes the page down instead of floating, and showing only months with
+writing matches "empty days are not shown". Because every month in it has
+entries, the dot marks **only the current month**, not "has content".
+It wraps to a second row on a phone at ~6+ months — expected.
+
+*Gotcha hit while building.* On mobile the label gets a 44px target via a
+transparent `border` + `background-clip: padding-box`, so only the text is
+tinted. The open/hover rule must use `background-color`, not `background` —
+the shorthand resets `background-clip` and the tint floods the whole target.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
