@@ -242,6 +242,37 @@ function hasEntriesAfter(mo) {
   return live().some((e) => monthKey(monthOf(e.ts)) > k);
 }
 
+// Every month that has writing, oldest first, as {y, m}.
+function monthsWithEntries() {
+  const keys = [...new Set(live().map((e) => monthKey(monthOf(e.ts))))].sort((a, b) => a - b);
+  return keys.map((k) => ({ y: Math.floor(k / 12), m: k % 12 }));
+}
+
+// "ספט׳" — the short name, grouped under its year.
+function renderMonthStrip() {
+  const cur = monthKey(visibleMonth);
+  let html = '';
+  let year = null;
+  for (const mo of monthsWithEntries()) {
+    if (mo.y !== year) {
+      if (year !== null) html += '<span class="msSep"></span>';
+      html += `<span class="msYear">${mo.y}</span>`;
+      year = mo.y;
+    }
+    const name = new Date(mo.y, mo.m, 1).toLocaleDateString('he-IL', { month: 'short' });
+    const here = monthKey(mo) === cur ? ' aria-current="true"' : '';
+    html += `<button class="msMonth" type="button" data-key="${monthKey(mo)}"
+                     aria-label="${monthLabel(mo)}"${here}>${name}</button>`;
+  }
+  $('monthStrip').innerHTML = html;
+}
+
+function setMonthStrip(open) {
+  $('monthStrip').hidden = !open;
+  $('monthLabel').setAttribute('aria-expanded', String(open));
+  if (open) renderMonthStrip();
+}
+
 function entryHtml(e) {
   // The <bdi> keeps the clock LTR without setting dir on the positioned span —
   // dir on that span would flip which side inset-inline-start means.
@@ -297,6 +328,8 @@ function updateChrome(shown) {
 
   if (readMode) {
     $('monthNav').hidden = !!query;
+    if (query) setMonthStrip(false);
+    else if (!$('monthStrip').hidden) renderMonthStrip();
     $('monthLabel').textContent = monthLabel(visibleMonth);
     // In RTL ‹ moves forward. It normally stops at the month we are actually
     // in, but never before an entry: a wrong device clock can stamp writing
@@ -309,6 +342,7 @@ function updateChrome(shown) {
       ? `${shown} ${shown === 1 ? 'hit' : 'hits'}`
       : `${shown} ${noun}`;
   } else {
+    setMonthStrip(false);
     $('nowStamp').innerHTML = headStamp();
     $('countWriting').textContent = String(live().length);
     $('liveTime').innerHTML = `<bdi>${timeLabel(now())}</bdi>`;
@@ -776,6 +810,26 @@ function goMonth(by) {
 $('prevMonth').addEventListener('click', () => goMonth(-1));
 $('nextMonth').addEventListener('click', () => goMonth(1));
 
+$('monthLabel').addEventListener('click', (e) => {
+  e.stopPropagation();
+  setMonthStrip($('monthStrip').hidden);
+});
+
+$('monthStrip').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const btn = e.target.closest('.msMonth');
+  if (!btn) return;
+  const k = Number(btn.dataset.key);
+  visibleMonth = { y: Math.floor(k / 12), m: k % 12 };
+  setMonthStrip(false);
+  render();
+  stream.scrollTop = 0;
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('monthStrip').hidden) setMonthStrip(false);
+});
+
 $('menuBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   $('menu').hidden = !$('menu').hidden;
@@ -783,6 +837,7 @@ $('menuBtn').addEventListener('click', (e) => {
 
 document.addEventListener('click', (e) => {
   if (!$('menu').hidden && !$('menu').contains(e.target)) $('menu').hidden = true;
+  if (!$('monthStrip').hidden) setMonthStrip(false);
 });
 
 /* ---------- export / restore ---------- */

@@ -48,7 +48,8 @@
     <!-- reading: month switcher. In RTL, › steps back and ‹ steps forward. -->
     <div class="monthNav" id="monthNav" data-when="reading">
       <button class="mArrow" id="prevMonth" type="button" aria-label="החודש הקודם">&rsaquo;</button>
-      <span class="mLabel" id="monthLabel"></span>
+      <button class="mLabel" id="monthLabel" type="button"
+              aria-expanded="false" aria-controls="monthStrip"></button>
       <button class="mArrow" id="nextMonth" type="button" aria-label="החודש הבא">&lsaquo;</button>
     </div>
 
@@ -64,6 +65,10 @@
     <button id="sync" class="syncBtn" type="button" hidden></button>
     <button id="modeBtn" class="btn" type="button"></button>
     <button id="menuBtn" class="iconBtn" type="button" aria-label="תפריט">···</button>
+
+    <!-- Opens from the month name: only the months that have writing. -->
+    <nav class="monthStrip" id="monthStrip" data-when="reading" hidden
+         aria-label="מעבר לחודש"></nav>
   </header>
 
   <!-- Small panel behind the ··· button -->

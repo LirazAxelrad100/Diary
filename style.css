@@ -139,11 +139,85 @@ body.mode-reading [data-when="writing"] { display: none !important; }
 .mArrow:hover:not(:disabled) { color: var(--ink); }
 .mArrow:disabled { opacity: .3; cursor: default; }
 
+/* The month name doubles as the button that opens the strip. It looks like
+   plain text on purpose; a soft tint on hover / while open is the only hint. */
 .mLabel {
+  padding: 2px 7px;
+  margin: -2px -7px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
   font-size: 13.5px;
   font-weight: 500;
   color: var(--meta);
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.mLabel:hover,
+.mLabel[aria-expanded="true"] { background-color: var(--surface); }
+.mLabel[aria-expanded="true"] { color: var(--ink); }
+
+/* ---------- month strip ---------- */
+
+/* Its own full-width row at the bottom of the header, so it pushes the page
+   down instead of floating over the writing. Oldest month on the right. */
+.monthStrip {
+  order: 20;
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.monthStrip[hidden] { display: none; }
+
+.msYear {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--meta-soft);
+  padding-inline: 6px;
+}
+
+.msSep {
+  width: 1px;
+  height: 22px;
+  margin-inline: 6px;
+  background: var(--rail);
+}
+
+.msMonth {
+  min-width: 40px;
+  padding: 4px 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--ink-recede);
+  cursor: pointer;
+  position: relative;
+}
+
+.msMonth:hover { color: var(--ink); }
+
+/* Every month here has writing, so the dot only marks where you are. */
+.msMonth[aria-current="true"] { background: var(--surface); color: var(--ink); }
+.msMonth[aria-current="true"]::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 3px;
+  inset-inline-start: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-live);
 }
 
 /* ---------- controls ---------- */
@@ -608,7 +682,16 @@ body.mode-reading .composerWrap { display: none; }
     margin: 0;
   }
 
-  .mLabel { font-size: 14px; }
+  /* A 44px target, but only the text area takes the tint: the transparent
+     border adds hit area and background-clip keeps the fill off it. */
+  .mLabel {
+    font-size: 14px;
+    border: 9px solid transparent;
+    margin: -11px -16px;
+    background-clip: padding-box;
+  }
+  .monthStrip { order: 11; }
+  .msMonth { min-height: 44px; min-width: 48px; font-size: 14px; }
 
   /* tap targets — the mock draws these tighter than a finger can hit */
   .btn, .search, .syncBtn { min-height: 44px; padding-block: 5px; font-size: 13px; }
