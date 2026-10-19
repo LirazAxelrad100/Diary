@@ -595,19 +595,30 @@ composer.addEventListener('keydown', (e) => {
    behind the sign-in) and the text lands at the caret, where it saves like
    typing. The audio itself is never stored — only the text is kept.
 
-   Long recordings are cut into segments. Vercel refuses uploads over 4.5MB,
-   and a phone's recorder may ignore the bitrate asked for, so a single long
-   file is not safe. Each segment is sent as soon as it closes, in order, so
-   text appears while she is still talking. A cut can clip a syllable at the
-   join — the price of never losing a long note to a size limit. */
-const SEGMENT_MS = 3 * 60 * 1000;
+   The recording is cut at every pause and each piece is sent as soon as it
+   closes, so text appears sentence by sentence while she is still talking —
+   which is also the proof that the mic is working. Cutting in a pause means no
+   word is ever split across two pieces. Pieces with no speech in them are not
+   sent at all: they cost money, and a transcription model given silence tends
+   to invent a polite phrase.
+
+   Pieces also keep every upload far under Vercel's 4.5MB limit; MAX_SEG_MS
+   forces a cut if she talks for a long time without pausing. */
+const MIN_SEG_MS = 3000;               // never cut shorter than this
+const MAX_SEG_MS = 45000;              // cut here even without a pause
+const PAUSE_MS = 700;                  // this much quiet ends a sentence
 const MAX_REC_MS = 30 * 60 * 1000;     // a forgotten mic stops itself
+const TICK_MS = 100;
 
 let micStream = null;
 let recorder = null;
 let recStart = 0;
 let recTick = null;
-let segmentTimer = null;
+let audioCtx = null;
+let analyser = null;
+let levelBuf = null;
+let peak = 0;                          // loudest recent level, slowly decaying
+let quietSince = 0;
 let recording = false;
 let starting = false;                  // waiting on the mic permission prompt
 let sending = 0;                       // segments uploaded but not answered
@@ -648,6 +659,90 @@ function micNote() {
   }
 }
 
+/* How loud the mic is right now, 0..1 (RMS of the latest samples). Phones
+   apply automatic gain, so absolute thresholds are unreliable; "quiet" is
+   measured against the recent peak instead. */
+function micLevel() {
+  if (!analyser) return 0;
+  analyser.getFloatTimeDomainData(levelBuf);
+  let sum = 0;
+  for (const v of levelBuf) sum += v * v;
+  return Math.sqrt(sum / levelBuf.length);
+}
+
+/* iOS only lets audio start inside the tap itself, and the permission prompt
+   breaks that link — so the context is woken here, synchronously on the tap,
+   before the mic is requested. */
+function wakeAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+  } catch (err) {
+    audioCtx = null;
+  }
+}
+
+function listen() {
+  analyser = null;
+  peak = 0;
+  quietSince = 0;
+  if (!audioCtx) return;
+  try {
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    levelBuf = new Float32Array(analyser.fftSize);
+    // Routed on to a silent output: Safari may not run a node nothing pulls.
+    const mute = audioCtx.createGain();
+    mute.gain.value = 0;
+    audioCtx.createMediaStreamSource(micStream).connect(analyser);
+    analyser.connect(mute).connect(audioCtx.destination);
+  } catch (err) {
+    analyser = null;
+  }
+}
+
+/* If the meter is not working — the context never started, or it has heard
+   nothing at all — pause detection is switched off: every piece is sent and
+   cuts fall back to MAX_SEG_MS. Losing a note to a broken meter would be far
+   worse than paying for a few seconds of silence. */
+function meterDead() {
+  if (analyser && (audioCtx.state !== 'running' ||
+                   (Date.now() - recStart > 1500 && peak === 0))) {
+    analyser = null;
+    if (recorder) recorder.hadSpeech = true;
+  }
+  return !analyser;
+}
+
+// Runs every TICK_MS while recording: meter, pause detection, cutting.
+function recTickFn() {
+  const t = Date.now();
+  if (t - recStart >= MAX_REC_MS) { stopRecording(); return; }
+
+  if (meterDead()) {
+    if (t - recorder.startedAt >= MAX_SEG_MS) { recorder.stop(); startSegment(); }
+    micNote();
+    return;
+  }
+
+  const level = micLevel();
+  peak = Math.max(level, peak * 0.995);
+  const quiet = level < Math.max(0.006, peak * 0.2);
+  if (!quiet && level > 0.01) recorder.hadSpeech = true;
+  quietSince = quiet ? (quietSince || t) : 0;
+
+  // The ring around the red button follows her voice.
+  $('micBtn').style.setProperty('--level', Math.min(1, level / (peak || 1)).toFixed(2));
+
+  const age = t - recorder.startedAt;
+  const paused = quietSince && t - quietSince >= PAUSE_MS;
+  if ((age >= MIN_SEG_MS && paused && recorder.hadSpeech) || age >= MAX_SEG_MS) {
+    recorder.stop();
+    startSegment();
+  }
+  micNote();
+}
+
 // Put text at the caret (the caret survives the blur the mic tap causes), with
 // a space between it and whatever is already there, then save as if typed.
 function insertTranscript(text) {
@@ -666,14 +761,26 @@ function insertTranscript(text) {
   composer.scrollTop = composer.scrollHeight;
 }
 
-async function transcribe(blob) {
+// The end of what is already written, so each short piece is transcribed as
+// a continuation — spelling of names, punctuation, Hebrew vs English — rather
+// than as a sentence out of nowhere. Only the entry being written is sent.
+function transcriptContext() {
+  return composer.value.slice(0, composer.selectionStart ?? composer.value.length).slice(-200);
+}
+
+async function transcribe(blob, context) {
   const { data } = await db.auth.getSession();
   const token = data.session && data.session.access_token;
   if (!token) throw new Error('signed out');
 
   const res = await fetch('/api/transcribe', {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': blob.type },
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': blob.type,
+      // Headers must be plain ASCII; Hebrew travels percent-encoded.
+      'x-context': encodeURIComponent(context || '')
+    },
     body: blob
   });
   if (!res.ok) throw new Error(`transcribe ${res.status}`);
@@ -687,7 +794,7 @@ function sendClip(blob) {
   micNote();
   sendChain = sendChain.then(async () => {
     try {
-      insertTranscript(await transcribe(blob));
+      insertTranscript(await transcribe(blob, transcriptContext()));
     } catch (err) {
       console.warn('Transcription failed:', err.message);
       failedClips.push(blob);
@@ -705,18 +812,16 @@ function startSegment() {
     audioBitsPerSecond: 32000            // speech needs little; may be ignored
   });
   const parts = [];
+  rec.hadSpeech = !analyser;           // no meter: send everything
   rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
   rec.onstop = () => {
+    if (!rec.hadSpeech) return;        // silence: nothing to transcribe
     // The container type only — the server picks the file name from it.
     sendClip(new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }));
   };
   rec.start();
+  rec.startedAt = Date.now();
   recorder = rec;
-  segmentTimer = setTimeout(() => {
-    if (!recording) return;
-    rec.stop();
-    startSegment();
-  }, SEGMENT_MS);
 }
 
 async function startRecording() {
@@ -734,19 +839,19 @@ async function startRecording() {
   clearTimeout(idleTimer);
   recording = true;
   recStart = Date.now();
+  listen();
   startSegment();
-  recTick = setInterval(() => {
-    if (Date.now() - recStart >= MAX_REC_MS) stopRecording();
-    else micNote();
-  }, 500);
+  recTick = setInterval(recTickFn, TICK_MS);
   micNote();
 }
 
 function stopRecording() {
   if (!recording) return;
   recording = false;
-  clearTimeout(segmentTimer);
   clearInterval(recTick);
+  analyser = null;
+  if (audioCtx) audioCtx.suspend();
+  $('micBtn').style.removeProperty('--level');
   if (recorder && recorder.state !== 'inactive') recorder.stop();
   recorder = null;
   // Release the mic so the phone's recording indicator goes away.
@@ -756,8 +861,9 @@ function stopRecording() {
 }
 
 $('micBtn').addEventListener('click', () => {
-  if (recording) stopRecording();
-  else startRecording();
+  if (recording) { stopRecording(); return; }
+  wakeAudio();
+  startRecording();
 });
 
 $('micWrap').addEventListener('click', (e) => {

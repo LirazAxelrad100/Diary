@@ -602,19 +602,17 @@ body.mode-reading .composerWrap { display: none; }
 .micBtn:hover { color: var(--ink); border-color: var(--meta-soft); }
 
 /* Recording: unmistakable, because a mic left on by accident is the worst
-   failure this feature has. */
+   failure this feature has. The ring grows with her voice (--level, 0..1,
+   set ten times a second), so a dead mic is visible before any text is due. */
 .micBtn.rec {
   border-color: var(--danger);
   background: var(--danger);
   color: var(--white);
-  animation: micPulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 calc(3px + var(--level, 0) * 9px) rgba(192, 57, 43, .18);
+  transition: box-shadow .1s linear;
 }
 
 .micBtn.busy { opacity: .5; cursor: progress; }
-
-@keyframes micPulse {
-  50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, .15); }
-}
 
 .micNote {
   color: var(--meta-soft);
@@ -835,5 +833,4 @@ body.mode-reading .composerWrap { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
-  .micBtn.rec { animation: none; }
 }

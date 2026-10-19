@@ -164,6 +164,52 @@ transparent `border` + `background-clip: padding-box`, so only the text is
 tinted. The open/hover rule must use `background-color`, not `background` —
 the shorthand resets `background-clip` and the tint floods the whole target.
 
+**Update 2026-10-19 — voice notes (Phase 5).** A 🎤 in the composer's
+bottom inline-end corner (writing view, signed in only). Tap to record, tap
+again: the audio goes to `api/transcribe.js` (Vercel function) → OpenAI
+`gpt-4o-transcribe`, `language: he` plus a prompt saying English words occur.
+The text lands at the caret and saves like typing. Audio is never stored.
+Deployed and the endpoint verified live (rejects unsigned requests).
+First version (text only after stopping) confirmed working on the phone the
+same day; **the live-text revision below still needs a phone check.**
+
+*How it works (revised same day — text now appears while recording).* An
+`AnalyserNode` meters the mic every 100ms; the recording is cut at each pause
+(700ms quiet, piece ≥3s, forced cut at 45s), each piece its own
+`MediaRecorder` (a complete file), sent in order through one promise chain.
+So text arrives sentence by sentence while she is still talking, no word is
+split at a join, and pieces stay far under Vercel's 4.5MB body limit.
+"Quiet" is relative to a decaying recent peak, because iOS auto-gain makes
+absolute levels meaningless. Pieces with no speech are not sent (cost, and
+silence makes the model invent phrases). The last 200 chars of the entry
+before the caret go along as `x-context` (percent-encoded — headers are
+ASCII) and become part of the prompt, so short pieces continue the text.
+The red button's ring follows the voice level (`--level`), so a dead mic shows
+before any text is due. Auto-stop at 30 min.
+
+*Meter safeguard.* iOS only starts audio inside the tap, so the
+`AudioContext` is resumed synchronously in the click handler before
+`getUserMedia`. If the meter still is not running (context not `running`, or
+peak exactly 0 after 1.5s), pause detection switches off: every piece is sent
+and cuts fall back to 45s. Losing a note to a broken meter is worse than
+paying for silence. Word-by-word streaming (OpenAI Realtime) was considered and
+deferred — much more complex for a small gain over sentence-by-sentence. Failed segments are kept in memory for "לנסות שוב" — lost
+on reload. Recording stops on mode switch, backgrounding, and sign-out; the
+idle commit and the background commit both wait for a pending transcript, so
+it joins the same entry instead of starting a new one.
+
+*Security.* `OPENAI_API_KEY` is a Vercel **Secret** env var, Production only.
+The function checks the caller's Supabase access token against
+`/auth/v1/user` before calling OpenAI, so the endpoint cannot be used to spend
+the key. OpenAI key is "restricted": Model capabilities = Request, all else
+None (transcription has no row of its own in OpenAI's permission list). Model
+is overridable with a `TRANSCRIBE_MODEL` env var, no code change.
+
+*Privacy decision.* Liraz accepted that audio goes to OpenAI (API: not used for
+training, retained up to 30 days for abuse checks). Her reasoning: Apple's
+keyboard dictation is also a third party, so it is not more private. This
+cannot be covered by Phase 4 encryption — the service must hear the audio.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
@@ -252,6 +298,9 @@ Worth re-checking with the designer if the look is ever revisited:
   those strings is the work; the layout needs no change.
 
 ## Avoid
+- **Never log the OpenAI response body or the audio** in `api/transcribe.js`
+  — the body echoes the transcript, i.e. diary content, into Vercel's logs.
+  Status codes only.
 - **Never bound navigation by the clock alone.** Anything that decides which
   months are reachable must be bounded by the *data*, not by `thisMonth()`. A
   cap at today assumes no entry can be stamped later than now, which a fast

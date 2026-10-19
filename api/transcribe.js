@@ -84,7 +84,11 @@ module.exports = async function handler(req, res) {
     // Mostly Hebrew. Fixing the language stops a short note being misread as
     // another language; the prompt tells it English words are expected too.
     form.append("language", "he");
-    form.append("prompt", "רשומה ביומן אישי, בעברית, לפעמים עם מילים באנגלית.");
+    // The app sends the end of the entry so far, so a short piece continues
+    // it (names, punctuation) instead of starting cold.
+    let context = "";
+    try { context = decodeURIComponent(req.headers["x-context"] || "").slice(-300); } catch {}
+    form.append("prompt", `רשומה ביומן אישי, בעברית, לפעמים עם מילים באנגלית. ${context}`.trim());
 
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
