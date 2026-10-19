@@ -170,8 +170,8 @@ again: the audio goes to `api/transcribe.js` (Vercel function) → OpenAI
 `gpt-4o-transcribe`, `language: he` plus a prompt saying English words occur.
 The text lands at the caret and saves like typing. Audio is never stored.
 Deployed and the endpoint verified live (rejects unsigned requests).
-First version (text only after stopping) confirmed working on the phone the
-same day; **the live-text revision below still needs a phone check.**
+All three versions below were checked on the phone the same day; the final
+one (preview + full take) is what is live.
 
 *How it works (revised same day — text now appears while recording).* An
 `AnalyserNode` meters the mic every 100ms; the recording is cut at each pause
@@ -219,6 +219,14 @@ is overridable with a `TRANSCRIBE_MODEL` env var, no code change.
 training, retained up to 30 days for abuse checks). Her reasoning: Apple's
 keyboard dictation is also a third party, so it is not more private. This
 cannot be covered by Phase 4 encryption — the service must hear the audio.
+
+**Update 2026-10-19 — the in-place editor is now visible.** Tapping a past
+note (writing view, today only) always opened an editor, but it was
+borderless and transparent, so it looked identical to the note and Liraz
+concluded editing did not exist. It now wears the composer's fill and border.
+Same fix removed the last `dir="ltr"` on a positioned `.time` (it made the
+time vanish while editing) — see the `dir` rule under Avoid. `style.css` is
+now cache-busted (`?v=2`) like `app.js`, so phones pick up CSS changes.
 
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
@@ -269,6 +277,10 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
+- Voice notes: accuracy accepted as-is on 2026-10-19 — Liraz corrects the
+  text by hand. If it ever needs to be better, try ElevenLabs Scribe (reported
+  stronger Hebrew, similar price): a server change in `api/transcribe.js` plus
+  a new Vercel secret; the app side does not change.
 - Phase 4 (optional): passphrase encryption via Web Crypto before upload, so
   the text is unreadable even to Supabase.
 

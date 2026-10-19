@@ -1101,7 +1101,7 @@ function startEdit(id) {
   const article = stream.querySelector(`[data-id="${id}"]`);
 
   article.innerHTML = `<span class="dot"></span>
-    <span class="time" dir="ltr">${timeLabel(entry.ts)}</span>
+    <span class="time"><bdi>${timeLabel(entry.ts)}</bdi></span>
     <div class="body">
       <textarea class="editor" dir="auto"></textarea>
       <div class="entryTools">

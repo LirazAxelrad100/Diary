@@ -465,14 +465,20 @@ body.mode-reading .entry .body {
   text-align: center;
 }
 
-/* editing an older entry in place */
+/* Editing an older entry in place. It wears the composer's box, so it is
+   obvious the text can be typed into — a borderless editor looked exactly
+   like the note it replaced, and read as "nothing happened". The negative
+   margin keeps the words where they were while the padding is added. */
 .editor {
   display: block;
-  width: 100%;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: inherit;
+  width: calc(100% + 24px);
+  margin: -10px -12px 0;
+  padding: 9px 11px;
+  border: 1px solid var(--meta-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  caret-color: var(--accent-live);
   font: inherit;
   line-height: inherit;
   resize: none;
