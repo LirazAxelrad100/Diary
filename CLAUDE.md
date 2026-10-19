@@ -187,6 +187,16 @@ ASCII) and become part of the prompt, so short pieces continue the text.
 The red button's ring follows the voice level (`--level`), so a dead mic shows
 before any text is due. Auto-stop at 30 min.
 
+*Preview + full take (revised again same day).* On the phone the live pieces
+came back ~80% right with wrong Hebrew words — a few seconds of audio give the
+model too little context. Now a second `MediaRecorder` records the whole take
+uninterrupted; on stop it is transcribed in one go and **replaces** the
+preview stretch (tracked as `take.start/end/inserted`), but only if that
+stretch is still exactly as inserted — if she edited it, hers stays. Over
+4MB, no second recorder, or a failure → the preview stays as the text, and
+failed preview pieces are offered for retry. Costs ~2× per minute. A late
+preview piece arriving after the full take is dropped (`take.done`).
+
 *Meter safeguard.* iOS only starts audio inside the tap, so the
 `AudioContext` is resumed synchronously in the click handler before
 `getUserMedia`. If the meter still is not running (context not `running`, or

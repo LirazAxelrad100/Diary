@@ -595,15 +595,16 @@ composer.addEventListener('keydown', (e) => {
    behind the sign-in) and the text lands at the caret, where it saves like
    typing. The audio itself is never stored — only the text is kept.
 
-   The recording is cut at every pause and each piece is sent as soon as it
-   closes, so text appears sentence by sentence while she is still talking —
-   which is also the proof that the mic is working. Cutting in a pause means no
-   word is ever split across two pieces. Pieces with no speech in them are not
-   sent at all: they cost money, and a transcription model given silence tends
-   to invent a polite phrase.
-
-   Pieces also keep every upload far under Vercel's 4.5MB limit; MAX_SEG_MS
-   forces a cut if she talks for a long time without pausing. */
+   Two recorders run on the same mic:
+   - PIECES, cut at every pause and sent as each one closes, so text appears
+     sentence by sentence while she is still talking — the proof the mic is
+     working. This is only a preview: a few seconds of audio give the model
+     too little context, and short pieces came back noticeably less accurate.
+   - The FULL take, one uninterrupted file. On stop it is transcribed in one
+     go and replaces the preview, so the text that stays is as good as a
+     single recording. If she edited the preview meanwhile, it is left alone.
+   If the full take cannot be used (no second recorder, over Vercel's 4.5MB
+   limit, or it fails) the preview simply stays as the text. */
 const MIN_SEG_MS = 3000;               // never cut shorter than this
 const MAX_SEG_MS = 45000;              // cut here even without a pause
 const PAUSE_MS = 700;                  // this much quiet ends a sentence
@@ -624,6 +625,9 @@ let starting = false;                  // waiting on the mic permission prompt
 let sending = 0;                       // segments uploaded but not answered
 let failedClips = [];                  // kept in memory for "try again"
 let sendChain = Promise.resolve();     // keeps segments in spoken order
+let fullRec = null;                    // the uninterrupted recording
+let take = null;                       // where this recording's preview sits
+const MAX_UPLOAD = 4 * 1024 * 1024;
 
 const canRecord = () =>
   !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
@@ -728,7 +732,7 @@ function recTickFn() {
   const level = micLevel();
   peak = Math.max(level, peak * 0.995);
   const quiet = level < Math.max(0.006, peak * 0.2);
-  if (!quiet && level > 0.01) recorder.hadSpeech = true;
+  if (level > 0.01) recorder.hadSpeech = true;
   quietSince = quiet ? (quietSince || t) : 0;
 
   // The ring around the red button follows her voice.
@@ -759,6 +763,29 @@ function insertTranscript(text) {
   composer.setSelectionRange(caret, caret);
   onType();
   composer.scrollTop = composer.scrollHeight;
+  return { start: a, end: caret };
+}
+
+// A preview piece arrived: insert it and remember the stretch it covers.
+function addPreview(t, text) {
+  if (t.done) return;          // the full take already landed; this is in it
+  const r = insertTranscript(text);
+  if (!r) return;
+  if (t.start === null) t.start = r.start;
+  t.end = r.end;
+  t.inserted = composer.value.slice(t.start, t.end);
+}
+
+// The full transcript arrived: swap it in for the preview, if the preview is
+// still exactly as it was inserted. Otherwise she has edited it — keep hers.
+function applyFinal(t, text) {
+  t.done = true;
+  if (t.start === null) { insertTranscript(text); return true; }
+  if (composer.value.slice(t.start, t.end) !== t.inserted) return false;
+  if (!text) return true;
+  composer.setSelectionRange(t.start, t.end);
+  insertTranscript(text);
+  return true;
 }
 
 // The end of what is already written, so each short piece is transcribed as
@@ -787,21 +814,44 @@ async function transcribe(blob, context) {
   return (await res.json()).text;
 }
 
-// Segments are answered strictly one after another, so they land in order.
-function sendClip(blob) {
+/* Everything is answered strictly one after another, so pieces land in
+   spoken order and the full take always comes after its own pieces.
+   kind: 'piece' (preview), 'final' (full take), 'plain' (retry: just insert). */
+function sendClip(blob, kind = 'plain', t = null) {
   if (!blob.size) return;
   sending++;
   micNote();
   sendChain = sendChain.then(async () => {
     try {
-      insertTranscript(await transcribe(blob, transcriptContext()));
+      const context = kind === 'final' && t.start !== null
+        ? composer.value.slice(0, t.start).slice(-200)
+        : transcriptContext();
+      const text = await transcribe(blob, context);
+      if (kind === 'piece') addPreview(t, text);
+      else if (kind === 'final') applyFinal(t, text);
+      else insertTranscript(text);
     } catch (err) {
       console.warn('Transcription failed:', err.message);
-      failedClips.push(blob);
+      // A failed preview piece only matters if no full take will cover it.
+      if (kind === 'piece') t.failed.push(blob);
+      else failedClips.push(blob);
     }
     sending--;
     micNote();
   });
+}
+
+// On stop: send the full take, or — when there is none — keep the preview and
+// offer to retry whatever preview pieces failed.
+function finishTake(t, blob) {
+  if (blob && blob.size && blob.size <= MAX_UPLOAD) {
+    sendClip(blob, 'final', t);
+  } else {
+    sendChain = sendChain.then(() => {
+      failedClips.push(...t.failed);
+      micNote();
+    });
+  }
 }
 
 // One MediaRecorder per segment: each one produces a complete, playable file.
@@ -814,14 +864,35 @@ function startSegment() {
   const parts = [];
   rec.hadSpeech = !analyser;           // no meter: send everything
   rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+  const t = take;
   rec.onstop = () => {
     if (!rec.hadSpeech) return;        // silence: nothing to transcribe
     // The container type only — the server picks the file name from it.
-    sendClip(new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }));
+    sendClip(new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }), 'piece', t);
   };
   rec.start();
   rec.startedAt = Date.now();
   recorder = rec;
+}
+
+function startFull() {
+  const t = take;
+  const type = recMime();
+  try {
+    const rec = new MediaRecorder(micStream, {
+      ...(type && { mimeType: type }),
+      audioBitsPerSecond: 32000
+    });
+    const parts = [];
+    rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+    // Normally queued after the last piece (stopped first); if the events
+    // arrive the other way round, t.done keeps that piece from doubling up.
+    rec.onstop = () => finishTake(t, new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }));
+    rec.start();
+    fullRec = rec;
+  } catch (err) {
+    fullRec = null;                    // preview pieces become the text
+  }
 }
 
 async function startRecording() {
@@ -839,6 +910,8 @@ async function startRecording() {
   clearTimeout(idleTimer);
   recording = true;
   recStart = Date.now();
+  take = { start: null, end: null, inserted: '', failed: [], done: false };
+  startFull();
   listen();
   startSegment();
   recTick = setInterval(recTickFn, TICK_MS);
@@ -854,6 +927,9 @@ function stopRecording() {
   $('micBtn').style.removeProperty('--level');
   if (recorder && recorder.state !== 'inactive') recorder.stop();
   recorder = null;
+  if (fullRec && fullRec.state !== 'inactive') fullRec.stop();
+  else finishTake(take, null);
+  fullRec = null;
   // Release the mic so the phone's recording indicator goes away.
   micStream.getTracks().forEach((t) => t.stop());
   micStream = null;
@@ -870,7 +946,7 @@ $('micWrap').addEventListener('click', (e) => {
   if (e.target.id !== 'micRetry') return;
   const clips = failedClips;
   failedClips = [];
-  clips.forEach(sendClip);
+  clips.forEach((blob) => sendClip(blob));
 });
 
 /* iOS does not shrink the layout viewport when the keyboard opens. It shrinks
