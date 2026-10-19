@@ -569,6 +569,72 @@ body.mode-reading .composerWrap { display: none; }
   border-color: var(--meta-soft);
 }
 
+/* ---------- voice note ---------- */
+
+/* The mic sits in the composer's bottom inline-end corner — the bottom-left
+   in RTL, where Hebrew lines rarely reach. */
+.composerBox { position: relative; }
+
+.micWrap {
+  position: absolute;
+  inset-inline-end: 10px;
+  inset-block-end: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.micWrap[hidden] { display: none; }
+
+.micBtn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--accent-live);
+  cursor: pointer;
+}
+
+.micBtn:hover { color: var(--ink); border-color: var(--meta-soft); }
+
+/* Recording: unmistakable, because a mic left on by accident is the worst
+   failure this feature has. */
+.micBtn.rec {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--white);
+  animation: micPulse 1.6s ease-in-out infinite;
+}
+
+.micBtn.busy { opacity: .5; cursor: progress; }
+
+@keyframes micPulse {
+  50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, .15); }
+}
+
+.micNote {
+  color: var(--meta-soft);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.micNote .mono { color: var(--danger); }
+
+.micNote button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-live);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Hebrew caption, so Assistant — only the clock inside it is monospaced. */
 .status {
   margin: 9px 0 0;
@@ -743,6 +809,8 @@ body.mode-reading .composerWrap { display: none; }
   .liveDot { top: 6px; }
   .status { font-size: 10.5px; margin-top: 8px; }
   .status .escHint { display: none; }   /* no Esc key on a phone */
+  .micBtn { width: 44px; height: 44px; }
+  .micWrap { inset-inline-end: 8px; inset-block-end: 8px; }
 
   /* iOS zooms the whole page in when a text field smaller than 16px takes
      focus, and does not reliably zoom back out on blur. The page is left
@@ -767,4 +835,5 @@ body.mode-reading .composerWrap { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+  .micBtn.rec { animation: none; }
 }

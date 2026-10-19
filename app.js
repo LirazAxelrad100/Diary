@@ -447,6 +447,8 @@ function showGate(message = '') {
   $('gate').hidden = false;
   $('loginError').textContent = message;
   $('signOut').hidden = true;
+  stopRecording();
+  showMic(false);
   updateSync();
 }
 
@@ -456,6 +458,7 @@ async function onSignedIn(u) {
 
   $('gate').hidden = true;
   $('signOut').hidden = false;
+  showMic(true);
   $('menuNote').textContent = `מחוברת כ־${u.email}. הרשומות מסתנכרנות בין המכשירים.`;
 
   // First time this account is used in this browser: make sure everything
@@ -529,7 +532,13 @@ function onType() {
   clearTimeout(saveTimer);
   clearTimeout(idleTimer);
   saveTimer = setTimeout(saveDraft, SAVE_MS);
-  idleTimer = setTimeout(commitDraft, IDLE_MS);
+  idleTimer = setTimeout(idleCommit, IDLE_MS);
+}
+
+// Not while a voice note is still recording or on its way back as text.
+function idleCommit() {
+  if (recording || sending) idleTimer = setTimeout(idleCommit, IDLE_MS);
+  else commitDraft();
 }
 
 function saveDraft() {
@@ -578,6 +587,184 @@ composer.addEventListener('input', onType);
 
 composer.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { commitDraft(); composer.blur(); }
+});
+
+/* ---------- voice notes ---------- */
+
+/* Tap the mic, talk, tap again: the audio goes to /api/transcribe (OpenAI,
+   behind the sign-in) and the text lands at the caret, where it saves like
+   typing. The audio itself is never stored — only the text is kept.
+
+   Long recordings are cut into segments. Vercel refuses uploads over 4.5MB,
+   and a phone's recorder may ignore the bitrate asked for, so a single long
+   file is not safe. Each segment is sent as soon as it closes, in order, so
+   text appears while she is still talking. A cut can clip a syllable at the
+   join — the price of never losing a long note to a size limit. */
+const SEGMENT_MS = 3 * 60 * 1000;
+const MAX_REC_MS = 30 * 60 * 1000;     // a forgotten mic stops itself
+
+let micStream = null;
+let recorder = null;
+let recStart = 0;
+let recTick = null;
+let segmentTimer = null;
+let recording = false;
+let starting = false;                  // waiting on the mic permission prompt
+let sending = 0;                       // segments uploaded but not answered
+let failedClips = [];                  // kept in memory for "try again"
+let sendChain = Promise.resolve();     // keeps segments in spoken order
+
+const canRecord = () =>
+  !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+
+function recMime() {
+  for (const t of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
+function showMic(on) {
+  $('micWrap').hidden = !(on && canRecord());
+}
+
+function micNote() {
+  const btn = $('micBtn');
+  btn.classList.toggle('rec', recording);
+  btn.classList.toggle('busy', !recording && sending > 0);
+  btn.setAttribute('aria-label', recording ? 'עצירת ההקלטה' : 'הקלטה');
+
+  const note = $('micNote');
+  if (recording) {
+    const s = Math.floor((Date.now() - recStart) / 1000);
+    const clock = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    note.innerHTML = `<span class="mono" dir="ltr">${clock}</span>`;
+  } else if (sending) {
+    note.textContent = 'מתמללת…';
+  } else if (failedClips.length) {
+    note.innerHTML = 'התמלול נכשל · <button type="button" id="micRetry">לנסות שוב</button>';
+  } else {
+    note.textContent = '';
+  }
+}
+
+// Put text at the caret (the caret survives the blur the mic tap causes), with
+// a space between it and whatever is already there, then save as if typed.
+function insertTranscript(text) {
+  if (!text) return;
+  const v = composer.value;
+  const a = composer.selectionStart ?? v.length;
+  const b = composer.selectionEnd ?? v.length;
+  const before = v.slice(0, a);
+  const after = v.slice(b);
+  const pre = before && !/\s$/.test(before) ? ' ' : '';
+  const post = after && !/^\s/.test(after) ? ' ' : '';
+  composer.value = before + pre + text + post + after;
+  const caret = (before + pre + text).length;
+  composer.setSelectionRange(caret, caret);
+  onType();
+  composer.scrollTop = composer.scrollHeight;
+}
+
+async function transcribe(blob) {
+  const { data } = await db.auth.getSession();
+  const token = data.session && data.session.access_token;
+  if (!token) throw new Error('signed out');
+
+  const res = await fetch('/api/transcribe', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': blob.type },
+    body: blob
+  });
+  if (!res.ok) throw new Error(`transcribe ${res.status}`);
+  return (await res.json()).text;
+}
+
+// Segments are answered strictly one after another, so they land in order.
+function sendClip(blob) {
+  if (!blob.size) return;
+  sending++;
+  micNote();
+  sendChain = sendChain.then(async () => {
+    try {
+      insertTranscript(await transcribe(blob));
+    } catch (err) {
+      console.warn('Transcription failed:', err.message);
+      failedClips.push(blob);
+    }
+    sending--;
+    micNote();
+  });
+}
+
+// One MediaRecorder per segment: each one produces a complete, playable file.
+function startSegment() {
+  const type = recMime();
+  const rec = new MediaRecorder(micStream, {
+    ...(type && { mimeType: type }),
+    audioBitsPerSecond: 32000            // speech needs little; may be ignored
+  });
+  const parts = [];
+  rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+  rec.onstop = () => {
+    // The container type only — the server picks the file name from it.
+    sendClip(new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }));
+  };
+  rec.start();
+  recorder = rec;
+  segmentTimer = setTimeout(() => {
+    if (!recording) return;
+    rec.stop();
+    startSegment();
+  }, SEGMENT_MS);
+}
+
+async function startRecording() {
+  if (starting) return;
+  starting = true;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    $('micNote').textContent = 'אין גישה למיקרופון';
+    return;
+  } finally {
+    starting = false;
+  }
+  // The idle timer would close the session in the middle of a long note.
+  clearTimeout(idleTimer);
+  recording = true;
+  recStart = Date.now();
+  startSegment();
+  recTick = setInterval(() => {
+    if (Date.now() - recStart >= MAX_REC_MS) stopRecording();
+    else micNote();
+  }, 500);
+  micNote();
+}
+
+function stopRecording() {
+  if (!recording) return;
+  recording = false;
+  clearTimeout(segmentTimer);
+  clearInterval(recTick);
+  if (recorder && recorder.state !== 'inactive') recorder.stop();
+  recorder = null;
+  // Release the mic so the phone's recording indicator goes away.
+  micStream.getTracks().forEach((t) => t.stop());
+  micStream = null;
+  micNote();
+}
+
+$('micBtn').addEventListener('click', () => {
+  if (recording) stopRecording();
+  else startRecording();
+});
+
+$('micWrap').addEventListener('click', (e) => {
+  if (e.target.id !== 'micRetry') return;
+  const clips = failedClips;
+  failedClips = [];
+  clips.forEach(sendClip);
 });
 
 /* iOS does not shrink the layout viewport when the keyboard opens. It shrinks
@@ -697,8 +884,15 @@ if (vv) {
 // Leaving the page ends the session and pushes what's queued.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    // iOS cuts the mic off in the background anyway. The last segment is only
+    // queued once the recorder has finished stopping, so `sending` is not
+    // yet counting it — hence the separate flag.
+    const wasRecording = recording;
+    stopRecording();
     saveDraft();
-    commitDraft();
+    // A voice note still on its way back belongs to this entry, so the
+    // session stays open for it; what was written is already saved above.
+    if (!wasRecording && !sending) commitDraft();
   } else {
     pull();          // coming back: pick up anything written on another device
   }
@@ -780,6 +974,7 @@ $('search').addEventListener('input', (e) => {
 });
 
 $('modeBtn').addEventListener('click', () => {
+  stopRecording();
   commitDraft();
   readMode = !readMode;
 

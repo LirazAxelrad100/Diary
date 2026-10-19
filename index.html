@@ -90,14 +90,27 @@
     <div class="composerRail">
       <span class="liveDot"></span>
       <span class="liveTime" id="liveTime"></span>
-      <textarea id="composer" class="composer" dir="auto" rows="1"
-                aria-label="כתיבה"></textarea>
+      <div class="composerBox">
+        <textarea id="composer" class="composer" dir="auto" rows="1"
+                  aria-label="כתיבה"></textarea>
+        <!-- Voice note: tap to record, tap again to turn it into text. -->
+        <div class="micWrap" id="micWrap" hidden>
+          <span class="micNote" id="micNote" aria-live="polite"></span>
+          <button id="micBtn" class="micBtn" type="button" aria-label="הקלטה">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/>
+              <path d="M6 11a6 6 0 0 0 12 0M12 17v4" fill="none" stroke="currentColor"
+                    stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
       <p id="status" class="status" aria-live="polite"></p>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
