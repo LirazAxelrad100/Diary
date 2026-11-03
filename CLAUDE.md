@@ -255,6 +255,18 @@ box — she found the font, colour and position wrong. Now `#micPreview` wears
 the `composer` class and lies exactly over the textarea while recording: what
 is written, plus the heard words in `--ink-recede` at the caret, where they
 will land. Same font, same place; only the shade says "not final yet".
+*Third round, same day.* (1) Live pieces were too rough to read (3s of audio
+each), so `MIN_SEG_MS` went 3000 → 8000: fewer, better live updates. If still
+not good enough, next options in order: ElevenLabs Scribe, then OpenAI
+Realtime streaming. (2) **Bug: the full take dropped her last sentence** — the
+preview had "האם אין את הבאגים שהיו קודם?", the final did not. Likely cause:
+`stopRecording()` stopped the mic tracks in the same instant as
+`recorder.stop()`, cutting audio still being encoded. The mic is now released
+only after both recorders fire `stop` (2s safety timeout). Safety net in
+`applyFinal`: if the full take is under 70% of the preview's length, the
+preview is used instead — a missing sentence is worse than a wrong word.
+Root cause is a likely diagnosis, not proven; watch for it on the phone.
+
 `bodyState()` owns `body.className` (mode + editing + recording) — set classes
 through it, since `updateChrome` used to overwrite the whole attribute.
 

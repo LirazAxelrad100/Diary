@@ -619,7 +619,9 @@ composer.addEventListener('keydown', (e) => {
      go and inserted at the caret, once.
    If the full take cannot be used (no second recorder, over Vercel's 4.5MB
    limit, or it fails) the preview text is inserted instead. */
-const MIN_SEG_MS = 3000;               // never cut shorter than this
+// 3s pieces came back with too many wrong words to read comfortably while
+// talking; ~8s gives the model a sentence or two to work with.
+const MIN_SEG_MS = 8000;               // never cut shorter than this
 const MAX_SEG_MS = 45000;              // cut here even without a pause
 const PAUSE_MS = 700;                  // this much quiet ends a sentence
 const MAX_REC_MS = 30 * 60 * 1000;     // a forgotten mic stops itself
@@ -808,7 +810,12 @@ function addPreview(t, text) {
 function applyFinal(t, text) {
   if (t.done) return;
   t.done = true;
-  insertTranscript(text || t.preview.join(' '));
+  // The full take has come back missing whole sentences the preview heard.
+  // A missing sentence is worse than a wrong word (she corrects by hand), so
+  // when the full take is much shorter than the preview, the preview wins.
+  const heard = t.preview.join(' ');
+  const cut = text && heard.length > 40 && text.length < heard.length * 0.7;
+  insertTranscript(text && !cut ? text : heard);
   showPreview(null);
 }
 
@@ -953,14 +960,20 @@ function stopRecording() {
   analyser = null;
   if (audioCtx) audioCtx.suspend();
   $('micBtn').style.removeProperty('--level');
-  if (recorder && recorder.state !== 'inactive') recorder.stop();
+  // Release the mic only once both recorders have finished writing their
+  // files. Cutting the mic off in the same instant as stop() can lose the
+  // last seconds still being encoded — a final sentence went missing from
+  // the full take on the phone exactly that way. 2s is the safety net.
+  const open = [recorder, fullRec].filter((r) => r && r.state !== 'inactive');
+  const done = open.map((r) => new Promise((ok) => r.addEventListener('stop', ok, { once: true })));
+  open.forEach((r) => r.stop());
+  if (!open.includes(fullRec)) finishTake(take, null);   // no full take coming
   recorder = null;
-  if (fullRec && fullRec.state !== 'inactive') fullRec.stop();
-  else finishTake(take, null);
   fullRec = null;
-  // Release the mic so the phone's recording indicator goes away.
-  micStream.getTracks().forEach((t) => t.stop());
+  const mic = micStream;
   micStream = null;
+  Promise.race([Promise.all(done), new Promise((ok) => setTimeout(ok, 2000))])
+    .then(() => mic.getTracks().forEach((t) => t.stop()));
   bodyState();
   showPreview(take);
   micNote();
