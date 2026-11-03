@@ -256,7 +256,9 @@ the `composer` class and lies exactly over the textarea while recording: what
 is written, plus the heard words in `--ink-recede` at the caret, where they
 will land. Same font, same place; only the shade says "not final yet".
 *Third round, same day.* (1) Live pieces were too rough to read (3s of audio
-each), so `MIN_SEG_MS` went 3000 → 8000: fewer, better live updates. If still
+each). 8000 was accurate but the first words took 10-12s and she read the
+empty box as "no live text"; settled on `MIN_SEG_MS` 5000, plus "מקשיבה…"
+in the overlay until the first piece returns. If still
 not good enough, next options in order: ElevenLabs Scribe, then OpenAI
 Realtime streaming. (2) **Bug: the full take dropped her last sentence** — the
 preview had "האם אין את הבאגים שהיו קודם?", the final did not. Likely cause:

@@ -619,9 +619,9 @@ composer.addEventListener('keydown', (e) => {
      go and inserted at the caret, once.
    If the full take cannot be used (no second recorder, over Vercel's 4.5MB
    limit, or it fails) the preview text is inserted instead. */
-// 3s pieces came back with too many wrong words to read comfortably while
-// talking; ~8s gives the model a sentence or two to work with.
-const MIN_SEG_MS = 8000;               // never cut shorter than this
+// 3s pieces came back with too many wrong words; 8s was accurate but the
+// first words took 10-12s to appear and the box looked dead. 5s is between.
+const MIN_SEG_MS = 5000;               // never cut shorter than this
 const MAX_SEG_MS = 45000;              // cut here even without a pause
 const PAUSE_MS = 700;                  // this much quiet ends a sentence
 const MAX_REC_MS = 30 * 60 * 1000;     // a forgotten mic stops itself
@@ -793,7 +793,9 @@ function showPreview(t) {
   const pre = heard && before && !/\s$/.test(before) ? ' ' : '';
   const span = document.createElement('span');
   span.className = 'heard';
-  span.textContent = pre + heard;
+  // Until the first piece is back, say the mic is on, so the box never
+  // looks empty while she is talking.
+  span.textContent = heard ? pre + heard : (before ? ' ' : '') + 'מקשיבה…';
   box.replaceChildren(before, span, v.slice(at));
   box.scrollTop = box.scrollHeight;   // the newest words stay in view
 }
