@@ -625,27 +625,21 @@ body.mode-reading .composerWrap { display: none; }
 
 .micBtn.busy { opacity: .5; cursor: progress; }
 
-/* Live preview while recording: grey, under the text, beside the mic. It is
-   a guide that the mic hears her — the text that lands in the box is the
-   full-take transcript, inserted once on stop. */
+/* While recording, #micPreview lies exactly over the textarea and wears its
+   class, so font, size, padding and border are the composer's own. It shows
+   what is already written, with the words being heard in lighter ink at the
+   caret — where the final transcript will land on stop. */
 .micPreview {
   position: absolute;
-  inset-inline-start: 1px;
-  inset-inline-end: 64px;
-  inset-block-end: 1px;
-  padding: 8px 17px 10px;
-  border-end-start-radius: 13px;
-  background: var(--surface);
-  color: var(--meta-soft);
-  font-size: 14px;
-  line-height: 1.5;
-  overflow: hidden;
-  max-height: calc(1.5em * 2 + 18px);
+  inset: 0;
+  height: auto;
+  padding-block-end: 64px;        /* room for the mic row */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .micPreview[hidden] { display: none; }
-
-body.recording .composer { padding-block-end: 70px; }
+.micPreview .heard { color: var(--ink-recede); }
 
 .micNote {
   color: var(--meta-soft);

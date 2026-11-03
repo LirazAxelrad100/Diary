@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500&family=Space+Grotesk:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap">
 
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body class="mode-writing">
 
@@ -93,9 +93,9 @@
       <div class="composerBox">
         <textarea id="composer" class="composer" dir="auto" rows="1"
                   aria-label="כתיבה"></textarea>
-        <!-- What is being heard right now. Shown here, not typed into the box,
-             so the text in the box never rewrites itself. -->
-        <div class="micPreview" id="micPreview" aria-live="polite" hidden></div>
+        <!-- While recording, this covers the box: what is written, with the words
+             being heard shown lighter where they will land. -->
+        <div class="composer micPreview" id="micPreview" dir="auto" aria-live="polite" hidden></div>
         <!-- Voice note: tap to record, tap again to turn it into text. -->
         <div class="micWrap" id="micWrap" hidden>
           <span class="micNote" id="micNote" aria-live="polite"></span>
@@ -114,6 +114,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

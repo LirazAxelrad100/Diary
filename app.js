@@ -782,10 +782,18 @@ function insertTranscript(text) {
 
 function showPreview(t) {
   const box = $('micPreview');
-  const text = t && !t.done ? t.preview.join(' ') : '';
-  box.hidden = !(recording || text);
-  // The newest words matter; older ones scroll off the top.
-  box.textContent = text.length > 140 ? '…' + text.slice(-140) : text;
+  const heard = t && !t.done ? t.preview.join(' ') : '';
+  box.hidden = !recording && !heard;
+  if (box.hidden) return;
+  const v = composer.value;
+  const at = composer.selectionStart ?? v.length;
+  const before = v.slice(0, at);
+  const pre = heard && before && !/\s$/.test(before) ? ' ' : '';
+  const span = document.createElement('span');
+  span.className = 'heard';
+  span.textContent = pre + heard;
+  box.replaceChildren(before, span, v.slice(at));
+  box.scrollTop = box.scrollHeight;   // the newest words stay in view
 }
 
 // A preview piece arrived: show it, outside the box.

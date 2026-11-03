@@ -228,6 +228,44 @@ Same fix removed the last `dir="ltr"` on a positioned `.time` (it made the
 time vanish while editing) — see the `dir` rule under Avoid. `style.css` is
 now cache-busted (`?v=2`) like `app.js`, so phones pick up CSS changes.
 
+**Update 2026-11-03 — editing on mobile + recording preview (pushed).
+Editing confirmed on the phone; recording preview approved by Liraz.**
+
+*Editing was broken on the phone, three bugs.* (1) The fixed 232px composer
+took all the room above the keyboard, so the entry being edited was squeezed
+out of sight. Now `body.editing` hides `.composerWrap`, and the entry scrolls
+into view 400ms after focus. (2) `סיום` closed the entry, then the same tap
+bubbled to the stream's click handler from an element already removed by
+`render()`, and reopened it — so "done" never worked. The handler now ignores
+taps whose target is no longer in `stream`. (3) Tapping a second entry left
+the first one open too; the previous edit is now ended (saved) first. Also:
+any `render()` ends an open edit, because a re-render replaces the editor and
+would otherwise leave the composer hidden with nothing to type in. Starting an
+edit commits the composer's draft as its own entry, and is ignored while a
+voice note is still recording or being transcribed.
+
+*Recording "rewrote itself".* The preview pieces used to be typed into the
+box and then swapped for the full take on stop — Liraz saw that as text
+jumping and editing itself. The preview now never enters the textarea; on
+stop, the full take is inserted once at the caret (or the preview text, if
+there is no full take or it fails). `take` is now just
+`{ preview, failed, done }`; the `start/end/inserted` tracking is gone.
+A first version showed the preview as a small grey strip at the bottom of the
+box — she found the font, colour and position wrong. Now `#micPreview` wears
+the `composer` class and lies exactly over the textarea while recording: what
+is written, plus the heard words in `--ink-recede` at the caret, where they
+will land. Same font, same place; only the shade says "not final yet".
+`bodyState()` owns `body.className` (mode + editing + recording) — set classes
+through it, since `updateChrome` used to overwrite the whole attribute.
+
+*Mic permission asked every time* — iOS, not the app. Suggested Settings →
+Apps → Safari → Microphone → Allow; a home-screen app may still ask once per
+launch. Not fixable in code without keeping the mic open (which keeps the
+recording indicator on — rejected).
+
+Verified in the browser at 375px with a simulated keyboard and a faked
+transcriber. Cache-busted to `style.css?v=3`, `app.js?v=8`.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
