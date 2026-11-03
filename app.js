@@ -284,6 +284,13 @@ function entryHtml(e) {
 }
 
 function render() {
+  // A re-render replaces the open editor, so the edit ends here (it is saved
+  // as typed) — otherwise the composer would stay hidden with no editor shown.
+  if (editId) {
+    const open = entries.find((e) => e.id === editId);
+    if (open) touch(open);
+    editId = null;
+  }
   const list = readMode ? readingEntries() : todayEntries();
 
   if (!list.length) {
@@ -320,9 +327,15 @@ function render() {
   updateChrome(list.length);
 }
 
+// The mode, plus what is going on right now (an entry open, the mic on).
+function bodyState() {
+  document.body.className = (readMode ? 'mode-reading' : 'mode-writing') +
+    (editId ? ' editing' : '') + (recording ? ' recording' : '');
+}
+
 /* Header text differs per mode; both halves live in the same bar. */
 function updateChrome(shown) {
-  document.body.className = readMode ? 'mode-reading' : 'mode-writing';
+  bodyState();
   $('barTitle').textContent = readMode ? 'קריאה' : 'כותבת עכשיו';
   $('modeBtn').textContent = readMode ? 'כתיבה' : 'קריאה';
 
@@ -598,13 +611,14 @@ composer.addEventListener('keydown', (e) => {
    Two recorders run on the same mic:
    - PIECES, cut at every pause and sent as each one closes, so text appears
      sentence by sentence while she is still talking — the proof the mic is
-     working. This is only a preview: a few seconds of audio give the model
-     too little context, and short pieces came back noticeably less accurate.
+     working. This is only a preview, shown grey in #micPreview and never
+     typed into the box: a few seconds of audio give the model too little
+     context, and when the preview was typed in and then swapped for the full
+     take, the text visibly rewrote itself under her eyes.
    - The FULL take, one uninterrupted file. On stop it is transcribed in one
-     go and replaces the preview, so the text that stays is as good as a
-     single recording. If she edited the preview meanwhile, it is left alone.
+     go and inserted at the caret, once.
    If the full take cannot be used (no second recorder, over Vercel's 4.5MB
-   limit, or it fails) the preview simply stays as the text. */
+   limit, or it fails) the preview text is inserted instead. */
 const MIN_SEG_MS = 3000;               // never cut shorter than this
 const MAX_SEG_MS = 45000;              // cut here even without a pause
 const PAUSE_MS = 700;                  // this much quiet ends a sentence
@@ -626,7 +640,7 @@ let sending = 0;                       // segments uploaded but not answered
 let failedClips = [];                  // kept in memory for "try again"
 let sendChain = Promise.resolve();     // keeps segments in spoken order
 let fullRec = null;                    // the uninterrupted recording
-let take = null;                       // where this recording's preview sits
+let take = null;                       // this recording's preview text
 const MAX_UPLOAD = 4 * 1024 * 1024;
 
 const canRecord = () =>
@@ -766,33 +780,37 @@ function insertTranscript(text) {
   return { start: a, end: caret };
 }
 
-// A preview piece arrived: insert it and remember the stretch it covers.
-function addPreview(t, text) {
-  if (t.done) return;          // the full take already landed; this is in it
-  const r = insertTranscript(text);
-  if (!r) return;
-  if (t.start === null) t.start = r.start;
-  t.end = r.end;
-  t.inserted = composer.value.slice(t.start, t.end);
+function showPreview(t) {
+  const box = $('micPreview');
+  const text = t && !t.done ? t.preview.join(' ') : '';
+  box.hidden = !(recording || text);
+  // The newest words matter; older ones scroll off the top.
+  box.textContent = text.length > 140 ? '…' + text.slice(-140) : text;
 }
 
-// The full transcript arrived: swap it in for the preview, if the preview is
-// still exactly as it was inserted. Otherwise she has edited it — keep hers.
+// A preview piece arrived: show it, outside the box.
+function addPreview(t, text) {
+  if (t.done || !text) return;   // the full take already landed; this is in it
+  t.preview.push(text);
+  showPreview(t);
+}
+
+// The take is over: the full transcript goes in once, or — when there is
+// none — the preview stands in for it.
 function applyFinal(t, text) {
+  if (t.done) return;
   t.done = true;
-  if (t.start === null) { insertTranscript(text); return true; }
-  if (composer.value.slice(t.start, t.end) !== t.inserted) return false;
-  if (!text) return true;
-  composer.setSelectionRange(t.start, t.end);
-  insertTranscript(text);
-  return true;
+  insertTranscript(text || t.preview.join(' '));
+  showPreview(null);
 }
 
 // The end of what is already written, so each short piece is transcribed as
 // a continuation — spelling of names, punctuation, Hebrew vs English — rather
 // than as a sentence out of nowhere. Only the entry being written is sent.
-function transcriptContext() {
-  return composer.value.slice(0, composer.selectionStart ?? composer.value.length).slice(-200);
+function transcriptContext(t) {
+  const before = composer.value.slice(0, composer.selectionStart ?? composer.value.length);
+  const heard = t && t.preview.length ? ' ' + t.preview.join(' ') : '';
+  return (before + heard).slice(-200);
 }
 
 async function transcribe(blob, context) {
@@ -823,9 +841,7 @@ function sendClip(blob, kind = 'plain', t = null) {
   micNote();
   sendChain = sendChain.then(async () => {
     try {
-      const context = kind === 'final' && t.start !== null
-        ? composer.value.slice(0, t.start).slice(-200)
-        : transcriptContext();
+      const context = kind === 'piece' ? transcriptContext(t) : transcriptContext();
       const text = await transcribe(blob, context);
       if (kind === 'piece') addPreview(t, text);
       else if (kind === 'final') applyFinal(t, text);
@@ -834,6 +850,7 @@ function sendClip(blob, kind = 'plain', t = null) {
       console.warn('Transcription failed:', err.message);
       // A failed preview piece only matters if no full take will cover it.
       if (kind === 'piece') t.failed.push(blob);
+      else if (kind === 'final') { applyFinal(t, ''); failedClips.push(blob); }
       else failedClips.push(blob);
     }
     sending--;
@@ -848,6 +865,7 @@ function finishTake(t, blob) {
     sendClip(blob, 'final', t);
   } else {
     sendChain = sendChain.then(() => {
+      applyFinal(t, '');
       failedClips.push(...t.failed);
       micNote();
     });
@@ -910,11 +928,13 @@ async function startRecording() {
   clearTimeout(idleTimer);
   recording = true;
   recStart = Date.now();
-  take = { start: null, end: null, inserted: '', failed: [], done: false };
+  take = { preview: [], failed: [], done: false };
   startFull();
   listen();
   startSegment();
   recTick = setInterval(recTickFn, TICK_MS);
+  bodyState();
+  showPreview(take);
   micNote();
 }
 
@@ -933,6 +953,8 @@ function stopRecording() {
   // Release the mic so the phone's recording indicator goes away.
   micStream.getTracks().forEach((t) => t.stop());
   micStream = null;
+  bodyState();
+  showPreview(take);
   micNote();
 }
 
@@ -1090,15 +1112,25 @@ $('sync').addEventListener('click', syncNow);
 
 stream.addEventListener('click', (ev) => {
   if (readMode || query) return;
+  // סיום / מחיקה re-render before this runs, so their tap arrives from an
+  // element already gone — without this check it reopened the entry it closed.
+  if (!stream.contains(ev.target)) return;
   const article = ev.target.closest('.entry');
   if (!article || article.dataset.id === editId) return;
+  // One entry open at a time: close (and save) the previous one first.
+  if (editId) endEdit();
   startEdit(article.dataset.id);
 });
 
 function startEdit(id) {
-  editId = id;
+  // A voice note still turning into text belongs in the composer; wait for it.
+  if (recording || sending) return;
+  commitDraft();             // what is in the composer is kept as its own entry
   const entry = entries.find((e) => e.id === id);
-  const article = stream.querySelector(`[data-id="${id}"]`);
+  const article = stream.querySelector(`[data-id="${id}"]`);   // after any re-render
+  if (!entry || !article) return;
+  editId = id;
+  bodyState();               // hides the composer, so the entry gets the room
 
   article.innerHTML = `<span class="dot"></span>
     <span class="time"><bdi>${timeLabel(entry.ts)}</bdi></span>
@@ -1115,6 +1147,8 @@ function startEdit(id) {
   autoGrow(box);
   box.focus();
   box.setSelectionRange(box.value.length, box.value.length);
+  // Once the keyboard is up, bring the entry into the space that is left.
+  setTimeout(() => article.scrollIntoView({ block: 'nearest' }), 400);
 
   box.addEventListener('input', () => {
     autoGrow(box);

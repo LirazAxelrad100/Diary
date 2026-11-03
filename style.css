@@ -487,6 +487,11 @@ body.mode-reading .entry .body {
 
 .editor:focus { outline: none; }
 
+/* While an older entry is open for editing the composer steps aside. On a
+   phone with the keyboard up, the fixed-height composer otherwise took all
+   the room and the entry being edited was squeezed out of sight. */
+body.editing .composerWrap { display: none; }
+
 .entryTools {
   display: flex;
   gap: 14px;
@@ -619,6 +624,28 @@ body.mode-reading .composerWrap { display: none; }
 }
 
 .micBtn.busy { opacity: .5; cursor: progress; }
+
+/* Live preview while recording: grey, under the text, beside the mic. It is
+   a guide that the mic hears her — the text that lands in the box is the
+   full-take transcript, inserted once on stop. */
+.micPreview {
+  position: absolute;
+  inset-inline-start: 1px;
+  inset-inline-end: 64px;
+  inset-block-end: 1px;
+  padding: 8px 17px 10px;
+  border-end-start-radius: 13px;
+  background: var(--surface);
+  color: var(--meta-soft);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  max-height: calc(1.5em * 2 + 18px);
+}
+
+.micPreview[hidden] { display: none; }
+
+body.recording .composer { padding-block-end: 70px; }
 
 .micNote {
   color: var(--meta-soft);
