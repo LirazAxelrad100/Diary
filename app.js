@@ -929,10 +929,13 @@ async function startRecording() {
   if (starting) return;
   starting = true;
   try {
-    // No call processing: echo cancellation, noise suppression and auto gain
-    // are tuned for phone calls and smear speech for the transcriber.
+    // Echo cancellation and noise suppression are tuned for phone calls and
+    // smear speech for the transcriber, so they are off. Auto gain stays ON:
+    // without it the raw iPhone level sits under the meter's fixed speech
+    // threshold (0.01), every piece counts as silence, and no live text
+    // appears until stop (seen on the phone 2026-11-10).
     micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
     });
   } catch (err) {
     $('micNote').textContent = 'אין גישה למיקרופון';

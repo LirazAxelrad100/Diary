@@ -291,8 +291,15 @@ times) plus invented words. Four changes:
 1. **No previous text in the prompt.** The `x-context` hint (last 200 chars)
    was being copied back into the answer — the likely cause of the loops.
    Removed in `app.js` and `api/transcribe.js`; the fixed one-line prompt stays.
-2. **Call processing off:** `getUserMedia` with `echoCancellation`,
-   `noiseSuppression`, `autoGainControl` all `false` — Voice Memos records raw.
+2. **Call processing off:** `echoCancellation` and `noiseSuppression` are
+   `false`. `autoGainControl` was turned off too at first, and that killed
+   the live text: the raw iPhone level never crossed the meter's fixed 0.01
+   speech threshold, so every piece was dropped as silence and text only
+   appeared on stop. **AGC stays on** (`v=14`). If AGC is ever removed, the
+   meter's thresholds must become relative first.
+   Phone test of `v=13`: one note came back with only its first of two
+   sentences, still marked `תמלול מלא ✓`. Its retry was complete. Watch for
+   it — with no live text the 70% safety net had nothing to compare against.
 3. **64 kbps** (was 32), matching Voice Memos. The 4MB upload limit now means
    a full take covers ~8 min; longer falls back to live text. Liraz's notes
    are far shorter, so accepted.
