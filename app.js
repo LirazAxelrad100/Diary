@@ -643,6 +643,10 @@ let failedClips = [];                  // kept in memory for "try again"
 let sendChain = Promise.resolve();     // keeps segments in spoken order
 let fullRec = null;                    // the uninterrupted recording
 let take = null;                       // this recording's preview text
+// TEMPORARY (2026-11-10): says which text the last note got, so a bad result
+// can be traced to the full take or to the rough live pieces. Remove once
+// voice quality is settled.
+let lastSource = '';
 const MAX_UPLOAD = 4 * 1024 * 1024;
 
 const canRecord = () =>
@@ -675,7 +679,7 @@ function micNote() {
   } else if (failedClips.length) {
     note.innerHTML = 'התמלול נכשל · <button type="button" id="micRetry">לנסות שוב</button>';
   } else {
-    note.textContent = '';
+    note.textContent = lastSource;
   }
 }
 
@@ -818,19 +822,13 @@ function applyFinal(t, text) {
   const heard = t.preview.join(' ');
   const cut = text && heard.length > 40 && text.length < heard.length * 0.7;
   insertTranscript(text && !cut ? text : heard);
+  lastSource = text && !cut ? 'תמלול מלא ✓'
+    : text ? 'טקסט חי בלבד · התמלול המלא יצא קצר'
+    : 'טקסט חי בלבד · התמלול המלא נכשל';
   showPreview(null);
 }
 
-// The end of what is already written, so each short piece is transcribed as
-// a continuation — spelling of names, punctuation, Hebrew vs English — rather
-// than as a sentence out of nowhere. Only the entry being written is sent.
-function transcriptContext(t) {
-  const before = composer.value.slice(0, composer.selectionStart ?? composer.value.length);
-  const heard = t && t.preview.length ? ' ' + t.preview.join(' ') : '';
-  return (before + heard).slice(-200);
-}
-
-async function transcribe(blob, context) {
+async function transcribe(blob) {
   const { data } = await db.auth.getSession();
   const token = data.session && data.session.access_token;
   if (!token) throw new Error('signed out');
@@ -839,9 +837,7 @@ async function transcribe(blob, context) {
     method: 'POST',
     headers: {
       authorization: `Bearer ${token}`,
-      'content-type': blob.type,
-      // Headers must be plain ASCII; Hebrew travels percent-encoded.
-      'x-context': encodeURIComponent(context || '')
+      'content-type': blob.type
     },
     body: blob
   });
@@ -858,8 +854,7 @@ function sendClip(blob, kind = 'plain', t = null) {
   micNote();
   sendChain = sendChain.then(async () => {
     try {
-      const context = kind === 'piece' ? transcriptContext(t) : transcriptContext();
-      const text = await transcribe(blob, context);
+      const text = await transcribe(blob);
       if (kind === 'piece') addPreview(t, text);
       else if (kind === 'final') applyFinal(t, text);
       else insertTranscript(text);
@@ -894,7 +889,7 @@ function startSegment() {
   const type = recMime();
   const rec = new MediaRecorder(micStream, {
     ...(type && { mimeType: type }),
-    audioBitsPerSecond: 32000            // speech needs little; may be ignored
+    audioBitsPerSecond: 64000            // Voice Memos quality; 32k garbled Hebrew
   });
   const parts = [];
   rec.hadSpeech = !analyser;           // no meter: send everything
@@ -916,7 +911,7 @@ function startFull() {
   try {
     const rec = new MediaRecorder(micStream, {
       ...(type && { mimeType: type }),
-      audioBitsPerSecond: 32000
+      audioBitsPerSecond: 64000
     });
     const parts = [];
     rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
@@ -934,7 +929,11 @@ async function startRecording() {
   if (starting) return;
   starting = true;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // No call processing: echo cancellation, noise suppression and auto gain
+    // are tuned for phone calls and smear speech for the transcriber.
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
   } catch (err) {
     $('micNote').textContent = 'אין גישה למיקרופון';
     return;
@@ -946,6 +945,7 @@ async function startRecording() {
   recording = true;
   recStart = Date.now();
   take = { preview: [], failed: [], done: false };
+  lastSource = '';
   startFull();
   listen();
   startSegment();

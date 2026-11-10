@@ -280,6 +280,29 @@ recording indicator on — rejected).
 Verified in the browser at 375px with a simulated keyboard and a faked
 transcriber. Cache-busted to `style.css?v=3`, `app.js?v=8`.
 
+**Update 2026-11-10 — voice notes were gibberish; the cause was ours, not
+OpenAI's (pushed, awaiting a phone test).** Liraz recorded 3 Voice Memos
+and we ran them through OpenAI `gpt-4o-transcribe`, ElevenLabs Scribe v1/v2
+and Gemini (Gemini failed: 2.5 retired, 3.8 Flash overloaded, 3.1 Pro not on
+the free tier). **OpenAI was accurate on all three** — same model and
+settings as the diary. So the model was fine and the diary's input was not.
+A diary screenshot showed the note *looping* (the same sentences three
+times) plus invented words. Four changes:
+1. **No previous text in the prompt.** The `x-context` hint (last 200 chars)
+   was being copied back into the answer — the likely cause of the loops.
+   Removed in `app.js` and `api/transcribe.js`; the fixed one-line prompt stays.
+2. **Call processing off:** `getUserMedia` with `echoCancellation`,
+   `noiseSuppression`, `autoGainControl` all `false` — Voice Memos records raw.
+3. **64 kbps** (was 32), matching Voice Memos. The 4MB upload limit now means
+   a full take covers ~8 min; longer falls back to live text. Liraz's notes
+   are far shorter, so accepted.
+4. **TEMPORARY** `lastSource` message under the mic after each note —
+   `תמלול מלא ✓` or `טקסט חי בלבד · …` — to tell whether the final text came
+   from the full take or the rough pieces. Remove once quality is settled.
+`app.js?v=13`. Test script used: a throwaway Node script in a scratchpad,
+not in the repo. Ramble Flow CLI (suggested by Liraz) was checked first: it
+just calls Groq Whisper or OpenAI, nothing Hebrew-specific — not useful.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
@@ -329,6 +352,17 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
+- Voice notes, live text (2026-11-03): first words take ~10s (5s piece +
+  wait for a pause + ~2-3s round trip) — the floor of the cut-into-pieces
+  design. Liraz is testing it more before deciding. If it is not good enough,
+  the fix is streaming (OpenAI Realtime transcription): words ~1s after speech,
+  but a new server part and a rewrite of the recording logic, Hebrew unproven.
+  Do not shorten pieces again to chase speed — 3s pieces were too inaccurate.
+- Voice notes, accuracy (2026-11-10): phone-test the four fixes above and
+  read the `lastSource` message. If still bad with `תמלול מלא ✓`, the audio
+  was not the only problem — then compare the ElevenLabs results from the
+  test before switching (server-only change + a new Vercel secret). Remove
+  `lastSource` when done.
 - Voice notes: accuracy accepted as-is on 2026-10-19 — Liraz corrects the
   text by hand. If it ever needs to be better, try ElevenLabs Scribe (reported
   stronger Hebrew, similar price): a server change in `api/transcribe.js` plus
