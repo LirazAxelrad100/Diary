@@ -310,6 +310,22 @@ times) plus invented words. Four changes:
 not in the repo. Ramble Flow CLI (suggested by Liraz) was checked first: it
 just calls Groq Whisper or OpenAI, nothing Hebrew-specific — not useful.
 
+**Update 2026-11-10 (later) — live text removed; voice is now one plain
+recording (`app.js?v=15`, `style.css?v=6`).** The `v=14` phone test still
+failed: live text came late, and the final note was cut off mid-word
+("עדיין לא רואה את ה"). After three rounds of tuning the pieces, Liraz chose
+simple over live. **Everything about pieces, the second recorder, the
+volume meter, pause detection, `#micPreview`, the level ring and the 70%
+safety net is gone** — the earlier updates above describe code that no
+longer exists. Now: tap → one `MediaRecorder` → tap again → it keeps
+recording **1s more** (`TAIL_MS`, iOS drops the last moment on stop) →
+stops → mic released after `onstop` → one upload → text at the caret.
+Auto-stop at **8 min** (`MAX_REC_MS`) so the file always fits under 4MB.
+`sending` is counted from the tap, so the idle/background commits wait for
+the text. Retry on failure kept. Verified in the browser with a fake mic
+and faked transcriber (text lands ~1s after stop; failure → retry works).
+Awaiting a phone test.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
@@ -359,17 +375,12 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
-- Voice notes, live text (2026-11-03): first words take ~10s (5s piece +
-  wait for a pause + ~2-3s round trip) — the floor of the cut-into-pieces
-  design. Liraz is testing it more before deciding. If it is not good enough,
-  the fix is streaming (OpenAI Realtime transcription): words ~1s after speech,
-  but a new server part and a rewrite of the recording logic, Hebrew unproven.
-  Do not shorten pieces again to chase speed — 3s pieces were too inaccurate.
-- Voice notes, accuracy (2026-11-10): phone-test the four fixes above and
-  read the `lastSource` message. If still bad with `תמלול מלא ✓`, the audio
-  was not the only problem — then compare the ElevenLabs results from the
-  test before switching (server-only change + a new Vercel secret). Remove
-  `lastSource` when done.
+- Voice notes (2026-11-10): phone-test the one-recording version. If text
+  is still cut at the end, raise `TAIL_MS`. If accuracy is still poor,
+  ElevenLabs Scribe is the next try (server-only change + a new Vercel
+  secret). Do not bring live text back by cutting pieces — that design is
+  what broke; if live text is ever wanted, it means streaming (OpenAI
+  Realtime), a separate project.
 - Voice notes: accuracy accepted as-is on 2026-10-19 — Liraz corrects the
   text by hand. If it ever needs to be better, try ElevenLabs Scribe (reported
   stronger Hebrew, similar price): a server change in `api/transcribe.js` plus

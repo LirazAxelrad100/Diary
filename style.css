@@ -613,33 +613,15 @@ body.mode-reading .composerWrap { display: none; }
 .micBtn:hover { color: var(--ink); border-color: var(--meta-soft); }
 
 /* Recording: unmistakable, because a mic left on by accident is the worst
-   failure this feature has. The ring grows with her voice (--level, 0..1,
-   set ten times a second), so a dead mic is visible before any text is due. */
+   failure this feature has. */
 .micBtn.rec {
   border-color: var(--danger);
   background: var(--danger);
   color: var(--white);
-  box-shadow: 0 0 0 calc(3px + var(--level, 0) * 9px) rgba(192, 57, 43, .18);
-  transition: box-shadow .1s linear;
+  box-shadow: 0 0 0 4px rgba(192, 57, 43, .18);
 }
 
 .micBtn.busy { opacity: .5; cursor: progress; }
-
-/* While recording, #micPreview lies exactly over the textarea and wears its
-   class, so font, size, padding and border are the composer's own. It shows
-   what is already written, with the words being heard in lighter ink at the
-   caret — where the final transcript will land on stop. */
-.micPreview {
-  position: absolute;
-  inset: 0;
-  height: auto;
-  padding-block-end: 64px;        /* room for the mic row */
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-}
-
-.micPreview[hidden] { display: none; }
-.micPreview .heard { color: var(--ink-recede); }
 
 .micNote {
   color: var(--meta-soft);

@@ -608,46 +608,26 @@ composer.addEventListener('keydown', (e) => {
    behind the sign-in) and the text lands at the caret, where it saves like
    typing. The audio itself is never stored — only the text is kept.
 
-   Two recorders run on the same mic:
-   - PIECES, cut at every pause and sent as each one closes, so text appears
-     sentence by sentence while she is still talking — the proof the mic is
-     working. This is only a preview, shown grey in #micPreview and never
-     typed into the box: a few seconds of audio give the model too little
-     context, and when the preview was typed in and then swapped for the full
-     take, the text visibly rewrote itself under her eyes.
-   - The FULL take, one uninterrupted file. On stop it is transcribed in one
-     go and inserted at the caret, once.
-   If the full take cannot be used (no second recorder, over Vercel's 4.5MB
-   limit, or it fails) the preview text is inserted instead. */
-// 3s pieces came back with too many wrong words; 8s was accurate but the
-// first words took 10-12s to appear and the box looked dead. 5s is between.
-const MIN_SEG_MS = 5000;               // never cut shorter than this
-const MAX_SEG_MS = 45000;              // cut here even without a pause
-const PAUSE_MS = 700;                  // this much quiet ends a sentence
-const MAX_REC_MS = 30 * 60 * 1000;     // a forgotten mic stops itself
-const TICK_MS = 100;
+   Deliberately simple (2026-11-10): ONE recording, sent once, on stop. An
+   earlier version also cut the audio into pieces at every pause to show live
+   text while she spoke. That needed a second recorder, a volume meter and
+   pause detection, and every voice bug came from those parts — late or
+   missing live text, looping, lost sentences. A plain Voice Memos file sent
+   to the same model was accurate, so this copies that. */
+const TAIL_MS = 1000;                  // keep recording this long after stop
+// Vercel rejects bodies over 4.5MB; 64kbps fills 4MB in ~8.7 min, so a note
+// stops itself at 8 and always fits in one upload.
+const MAX_REC_MS = 8 * 60 * 1000;
+const MAX_UPLOAD = 4 * 1024 * 1024;
 
 let micStream = null;
 let recorder = null;
 let recStart = 0;
 let recTick = null;
-let audioCtx = null;
-let analyser = null;
-let levelBuf = null;
-let peak = 0;                          // loudest recent level, slowly decaying
-let quietSince = 0;
 let recording = false;
 let starting = false;                  // waiting on the mic permission prompt
-let sending = 0;                       // segments uploaded but not answered
+let sending = 0;                       // notes recorded but not yet text
 let failedClips = [];                  // kept in memory for "try again"
-let sendChain = Promise.resolve();     // keeps segments in spoken order
-let fullRec = null;                    // the uninterrupted recording
-let take = null;                       // this recording's preview text
-// TEMPORARY (2026-11-10): says which text the last note got, so a bad result
-// can be traced to the full take or to the rough live pieces. Remove once
-// voice quality is settled.
-let lastSource = '';
-const MAX_UPLOAD = 4 * 1024 * 1024;
 
 const canRecord = () =>
   !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
@@ -679,92 +659,8 @@ function micNote() {
   } else if (failedClips.length) {
     note.innerHTML = 'התמלול נכשל · <button type="button" id="micRetry">לנסות שוב</button>';
   } else {
-    note.textContent = lastSource;
+    note.textContent = '';
   }
-}
-
-/* How loud the mic is right now, 0..1 (RMS of the latest samples). Phones
-   apply automatic gain, so absolute thresholds are unreliable; "quiet" is
-   measured against the recent peak instead. */
-function micLevel() {
-  if (!analyser) return 0;
-  analyser.getFloatTimeDomainData(levelBuf);
-  let sum = 0;
-  for (const v of levelBuf) sum += v * v;
-  return Math.sqrt(sum / levelBuf.length);
-}
-
-/* iOS only lets audio start inside the tap itself, and the permission prompt
-   breaks that link — so the context is woken here, synchronously on the tap,
-   before the mic is requested. */
-function wakeAudio() {
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    audioCtx.resume();
-  } catch (err) {
-    audioCtx = null;
-  }
-}
-
-function listen() {
-  analyser = null;
-  peak = 0;
-  quietSince = 0;
-  if (!audioCtx) return;
-  try {
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    levelBuf = new Float32Array(analyser.fftSize);
-    // Routed on to a silent output: Safari may not run a node nothing pulls.
-    const mute = audioCtx.createGain();
-    mute.gain.value = 0;
-    audioCtx.createMediaStreamSource(micStream).connect(analyser);
-    analyser.connect(mute).connect(audioCtx.destination);
-  } catch (err) {
-    analyser = null;
-  }
-}
-
-/* If the meter is not working — the context never started, or it has heard
-   nothing at all — pause detection is switched off: every piece is sent and
-   cuts fall back to MAX_SEG_MS. Losing a note to a broken meter would be far
-   worse than paying for a few seconds of silence. */
-function meterDead() {
-  if (analyser && (audioCtx.state !== 'running' ||
-                   (Date.now() - recStart > 1500 && peak === 0))) {
-    analyser = null;
-    if (recorder) recorder.hadSpeech = true;
-  }
-  return !analyser;
-}
-
-// Runs every TICK_MS while recording: meter, pause detection, cutting.
-function recTickFn() {
-  const t = Date.now();
-  if (t - recStart >= MAX_REC_MS) { stopRecording(); return; }
-
-  if (meterDead()) {
-    if (t - recorder.startedAt >= MAX_SEG_MS) { recorder.stop(); startSegment(); }
-    micNote();
-    return;
-  }
-
-  const level = micLevel();
-  peak = Math.max(level, peak * 0.995);
-  const quiet = level < Math.max(0.006, peak * 0.2);
-  if (level > 0.01) recorder.hadSpeech = true;
-  quietSince = quiet ? (quietSince || t) : 0;
-
-  // The ring around the red button follows her voice.
-  $('micBtn').style.setProperty('--level', Math.min(1, level / (peak || 1)).toFixed(2));
-
-  const age = t - recorder.startedAt;
-  const paused = quietSince && t - quietSince >= PAUSE_MS;
-  if ((age >= MIN_SEG_MS && paused && recorder.hadSpeech) || age >= MAX_SEG_MS) {
-    recorder.stop();
-    startSegment();
-  }
-  micNote();
 }
 
 // Put text at the caret (the caret survives the blur the mic tap causes), with
@@ -783,49 +679,6 @@ function insertTranscript(text) {
   composer.setSelectionRange(caret, caret);
   onType();
   composer.scrollTop = composer.scrollHeight;
-  return { start: a, end: caret };
-}
-
-function showPreview(t) {
-  const box = $('micPreview');
-  const heard = t && !t.done ? t.preview.join(' ') : '';
-  box.hidden = !recording && !heard;
-  if (box.hidden) return;
-  const v = composer.value;
-  const at = composer.selectionStart ?? v.length;
-  const before = v.slice(0, at);
-  const pre = heard && before && !/\s$/.test(before) ? ' ' : '';
-  const span = document.createElement('span');
-  span.className = 'heard';
-  // Until the first piece is back, say the mic is on, so the box never
-  // looks empty while she is talking.
-  span.textContent = heard ? pre + heard : (before ? ' ' : '') + 'מקשיבה…';
-  box.replaceChildren(before, span, v.slice(at));
-  box.scrollTop = box.scrollHeight;   // the newest words stay in view
-}
-
-// A preview piece arrived: show it, outside the box.
-function addPreview(t, text) {
-  if (t.done || !text) return;   // the full take already landed; this is in it
-  t.preview.push(text);
-  showPreview(t);
-}
-
-// The take is over: the full transcript goes in once, or — when there is
-// none — the preview stands in for it.
-function applyFinal(t, text) {
-  if (t.done) return;
-  t.done = true;
-  // The full take has come back missing whole sentences the preview heard.
-  // A missing sentence is worse than a wrong word (she corrects by hand), so
-  // when the full take is much shorter than the preview, the preview wins.
-  const heard = t.preview.join(' ');
-  const cut = text && heard.length > 40 && text.length < heard.length * 0.7;
-  insertTranscript(text && !cut ? text : heard);
-  lastSource = text && !cut ? 'תמלול מלא ✓'
-    : text ? 'טקסט חי בלבד · התמלול המלא יצא קצר'
-    : 'טקסט חי בלבד · התמלול המלא נכשל';
-  showPreview(null);
 }
 
 async function transcribe(blob) {
@@ -835,94 +688,26 @@ async function transcribe(blob) {
 
   const res = await fetch('/api/transcribe', {
     method: 'POST',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': blob.type
-    },
+    headers: { authorization: `Bearer ${token}`, 'content-type': blob.type },
     body: blob
   });
   if (!res.ok) throw new Error(`transcribe ${res.status}`);
   return (await res.json()).text;
 }
 
-/* Everything is answered strictly one after another, so pieces land in
-   spoken order and the full take always comes after its own pieces.
-   kind: 'piece' (preview), 'final' (full take), 'plain' (retry: just insert). */
-function sendClip(blob, kind = 'plain', t = null) {
+async function sendClip(blob) {
   if (!blob.size) return;
+  if (blob.size > MAX_UPLOAD) { failedClips.push(blob); micNote(); return; }
   sending++;
   micNote();
-  sendChain = sendChain.then(async () => {
-    try {
-      const text = await transcribe(blob);
-      if (kind === 'piece') addPreview(t, text);
-      else if (kind === 'final') applyFinal(t, text);
-      else insertTranscript(text);
-    } catch (err) {
-      console.warn('Transcription failed:', err.message);
-      // A failed preview piece only matters if no full take will cover it.
-      if (kind === 'piece') t.failed.push(blob);
-      else if (kind === 'final') { applyFinal(t, ''); failedClips.push(blob); }
-      else failedClips.push(blob);
-    }
-    sending--;
-    micNote();
-  });
-}
-
-// On stop: send the full take, or — when there is none — keep the preview and
-// offer to retry whatever preview pieces failed.
-function finishTake(t, blob) {
-  if (blob && blob.size && blob.size <= MAX_UPLOAD) {
-    sendClip(blob, 'final', t);
-  } else {
-    sendChain = sendChain.then(() => {
-      applyFinal(t, '');
-      failedClips.push(...t.failed);
-      micNote();
-    });
-  }
-}
-
-// One MediaRecorder per segment: each one produces a complete, playable file.
-function startSegment() {
-  const type = recMime();
-  const rec = new MediaRecorder(micStream, {
-    ...(type && { mimeType: type }),
-    audioBitsPerSecond: 64000            // Voice Memos quality; 32k garbled Hebrew
-  });
-  const parts = [];
-  rec.hadSpeech = !analyser;           // no meter: send everything
-  rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
-  const t = take;
-  rec.onstop = () => {
-    if (!rec.hadSpeech) return;        // silence: nothing to transcribe
-    // The container type only — the server picks the file name from it.
-    sendClip(new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }), 'piece', t);
-  };
-  rec.start();
-  rec.startedAt = Date.now();
-  recorder = rec;
-}
-
-function startFull() {
-  const t = take;
-  const type = recMime();
   try {
-    const rec = new MediaRecorder(micStream, {
-      ...(type && { mimeType: type }),
-      audioBitsPerSecond: 64000
-    });
-    const parts = [];
-    rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
-    // Normally queued after the last piece (stopped first); if the events
-    // arrive the other way round, t.done keeps that piece from doubling up.
-    rec.onstop = () => finishTake(t, new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }));
-    rec.start();
-    fullRec = rec;
+    insertTranscript(await transcribe(blob));
   } catch (err) {
-    fullRec = null;                    // preview pieces become the text
+    console.warn('Transcription failed:', err.message);
+    failedClips.push(blob);
   }
+  sending--;
+  micNote();
 }
 
 async function startRecording() {
@@ -930,10 +715,7 @@ async function startRecording() {
   starting = true;
   try {
     // Echo cancellation and noise suppression are tuned for phone calls and
-    // smear speech for the transcriber, so they are off. Auto gain stays ON:
-    // without it the raw iPhone level sits under the meter's fixed speech
-    // threshold (0.01), every piece counts as silence, and no live text
-    // appears until stop (seen on the phone 2026-11-10).
+    // smear speech for the transcriber; auto gain keeps quiet speech audible.
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
     });
@@ -943,51 +725,67 @@ async function startRecording() {
   } finally {
     starting = false;
   }
+  const type = recMime();
+  let rec;
+  try {
+    rec = new MediaRecorder(micStream, {
+      ...(type && { mimeType: type }),
+      audioBitsPerSecond: 64000          // Voice Memos quality; 32k garbled Hebrew
+    });
+  } catch (err) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+    $('micNote').textContent = 'ההקלטה לא נתמכת כאן';
+    return;
+  }
+  const parts = [];
+  const mic = micStream;
+  rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+  rec.onstop = () => {
+    // The mic is released only after the file is complete: cutting it off in
+    // the same instant as stop() lost the last words on the phone.
+    mic.getTracks().forEach((t) => t.stop());
+    sending--;                           // the tail's hold, see stopRecording
+    // The container type only — the server picks the file name from it.
+    sendClip(new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }));
+  };
+  rec.start();
+  recorder = rec;
+
   // The idle timer would close the session in the middle of a long note.
   clearTimeout(idleTimer);
   recording = true;
   recStart = Date.now();
-  take = { preview: [], failed: [], done: false };
-  lastSource = '';
-  startFull();
-  listen();
-  startSegment();
-  recTick = setInterval(recTickFn, TICK_MS);
+  recTick = setInterval(() => {
+    if (Date.now() - recStart >= MAX_REC_MS) stopRecording(TAIL_MS);
+    else micNote();
+  }, 250);
   bodyState();
-  showPreview(take);
   micNote();
 }
 
-function stopRecording() {
+/* tail: how long to keep recording after the tap. iOS drops the last moment
+   of audio when a recorder stops — notes came back cut mid-word — so a tap
+   keeps listening one more second. Leaving the page or signing out stops at
+   once (iOS cuts the mic in the background anyway). */
+function stopRecording(tail = 0) {
   if (!recording) return;
   recording = false;
   clearInterval(recTick);
-  analyser = null;
-  if (audioCtx) audioCtx.suspend();
-  $('micBtn').style.removeProperty('--level');
-  // Release the mic only once both recorders have finished writing their
-  // files. Cutting the mic off in the same instant as stop() can lose the
-  // last seconds still being encoded — a final sentence went missing from
-  // the full take on the phone exactly that way. 2s is the safety net.
-  const open = [recorder, fullRec].filter((r) => r && r.state !== 'inactive');
-  const done = open.map((r) => new Promise((ok) => r.addEventListener('stop', ok, { once: true })));
-  open.forEach((r) => r.stop());
-  if (!open.includes(fullRec)) finishTake(take, null);   // no full take coming
+  const rec = recorder;
   recorder = null;
-  fullRec = null;
-  const mic = micStream;
   micStream = null;
-  Promise.race([Promise.all(done), new Promise((ok) => setTimeout(ok, 2000))])
-    .then(() => mic.getTracks().forEach((t) => t.stop()));
+  // Counted as "on its way" from this moment, so the idle and background
+  // commits wait for the text instead of closing the entry before it lands.
+  sending++;
+  setTimeout(() => { if (rec.state !== 'inactive') rec.stop(); }, tail);
   bodyState();
-  showPreview(take);
   micNote();
 }
 
 $('micBtn').addEventListener('click', () => {
-  if (recording) { stopRecording(); return; }
-  wakeAudio();
-  startRecording();
+  if (recording) stopRecording(TAIL_MS);
+  else startRecording();
 });
 
 $('micWrap').addEventListener('click', (e) => {
@@ -1114,9 +912,8 @@ if (vv) {
 // Leaving the page ends the session and pushes what's queued.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // iOS cuts the mic off in the background anyway. The last segment is only
-    // queued once the recorder has finished stopping, so `sending` is not
-    // yet counting it — hence the separate flag.
+    // iOS cuts the mic off in the background anyway. stopRecording counts
+    // the note in `sending` at once, so the session stays open for it.
     const wasRecording = recording;
     stopRecording();
     saveDraft();
