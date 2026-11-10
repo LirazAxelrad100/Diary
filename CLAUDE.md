@@ -324,7 +324,12 @@ Auto-stop at **8 min** (`MAX_REC_MS`) so the file always fits under 4MB.
 `sending` is counted from the tap, so the idle/background commits wait for
 the text. Retry on failure kept. Verified in the browser with a fake mic
 and faked transcriber (text lands ~1s after stop; failure → retry works).
-Awaiting a phone test.
+Phone test of `v=15`: a 20s note came back as its first 4 words. Next
+round (`v=16`): `chunking_strategy: "auto"` added in `api/transcribe.js`
+(gpt-4o-transcribe is known to stop at the first pause without it), plus a
+**TEMPORARY** `lastClip` readout under the mic — seconds · KB · ▶ play — to
+tell a cut recording (KB far under ~8KB/s) from a cut transcript. Remove
+`lastClip` once confirmed.
 
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works

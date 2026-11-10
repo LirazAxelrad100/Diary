@@ -628,6 +628,10 @@ let recording = false;
 let starting = false;                  // waiting on the mic permission prompt
 let sending = 0;                       // notes recorded but not yet text
 let failedClips = [];                  // kept in memory for "try again"
+// TEMPORARY (2026-11-10): what the last note actually sent — length, size and
+// a play button — to tell a cut-off recording from a cut-off transcript.
+// Remove once voice notes are confirmed working.
+let lastClip = null;
 
 const canRecord = () =>
   !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
@@ -658,6 +662,9 @@ function micNote() {
     note.textContent = 'מתמללת…';
   } else if (failedClips.length) {
     note.innerHTML = 'התמלול נכשל · <button type="button" id="micRetry">לנסות שוב</button>';
+  } else if (lastClip) {
+    note.innerHTML = `<span class="mono" dir="ltr">${lastClip.secs}s · ${lastClip.kb}KB</span> ` +
+      '<button type="button" id="micPlay">▶</button>';
   } else {
     note.textContent = '';
   }
@@ -742,12 +749,16 @@ async function startRecording() {
   const mic = micStream;
   rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
   rec.onstop = () => {
+    const blob = new Blob(parts, { type: (rec.mimeType || type).split(';')[0] });
+    if (lastClip) URL.revokeObjectURL(lastClip.url);
+    lastClip = { secs: Math.round((Date.now() - recStart) / 1000),
+                 kb: Math.round(blob.size / 1024), url: URL.createObjectURL(blob) };
     // The mic is released only after the file is complete: cutting it off in
     // the same instant as stop() lost the last words on the phone.
     mic.getTracks().forEach((t) => t.stop());
     sending--;                           // the tail's hold, see stopRecording
     // The container type only — the server picks the file name from it.
-    sendClip(new Blob(parts, { type: (rec.mimeType || type).split(';')[0] }));
+    sendClip(blob);
   };
   rec.start();
   recorder = rec;
@@ -789,6 +800,7 @@ $('micBtn').addEventListener('click', () => {
 });
 
 $('micWrap').addEventListener('click', (e) => {
+  if (e.target.id === 'micPlay' && lastClip) { new Audio(lastClip.url).play(); return; }
   if (e.target.id !== 'micRetry') return;
   const clips = failedClips;
   failedClips = [];
