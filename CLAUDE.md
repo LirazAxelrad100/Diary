@@ -330,6 +330,12 @@ round (`v=16`): `chunking_strategy: "auto"` added in `api/transcribe.js`
 **TEMPORARY** `lastClip` readout under the mic — seconds · KB · ▶ play — to
 tell a cut recording (KB far under ~8KB/s) from a cut transcript. Remove
 `lastClip` once confirmed.
+**Result on the phone: fixed.** A 25s note (195KB, i.e. complete) came back
+whole and accurate. The recording was never the problem — the model was
+stopping at the first pause; `chunking_strategy: "auto"` is what fixed it.
+Side effect: each chunk arrives on its own line. Liraz is happy with that —
+do not join them. She is testing a few more notes; then remove `lastClip`
+(it also overlaps the composer's last line, which is fine while temporary).
 
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
@@ -380,8 +386,8 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
-- Voice notes (2026-11-10): phone-test the one-recording version. If text
-  is still cut at the end, raise `TAIL_MS`. If accuracy is still poor,
+- Voice notes (2026-11-10): working. After a few more good notes, remove
+  the temporary `lastClip` readout (`app.js`). If accuracy ever drops,
   ElevenLabs Scribe is the next try (server-only change + a new Vercel
   secret). Do not bring live text back by cutting pieces — that design is
   what broke; if live text is ever wanted, it means streaming (OpenAI
