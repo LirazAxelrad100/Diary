@@ -342,6 +342,20 @@ back with a gap marked "..." where speech was skipped, and the fixed prompt
 the text. The prompt is now removed entirely (only `language: he` is sent).
 If gaps or "..." still appear, switch to ElevenLabs Scribe — Liraz's test
 results are in `~/Documents/voice test/results.html` (outside the repo).
+**Root cause found (2026-11-11, `app.js?v=17`): the file format.** Every
+symptom since 11-03 — first words only, last sentence dropped, gaps marked
+"...", text that was never said — fits one cause: iOS Safari's
+`MediaRecorder` writes a **fragmented MP4** (audio as a chain of small
+fragments), and OpenAI decodes those badly. Voice Memos writes a plain m4a,
+which is why the same model was perfect on those files. Earlier fixes
+(prompt, filters, tail, chunking) treated symptoms. Now `sendClip` decodes
+the recording in the browser (`decodeAudioData` → `OfflineAudioContext` at
+16kHz mono) and sends plain **WAV**. WAV is ~1.9MB/min, so notes over 100s
+go as several files, each cut at the quietest 100ms in its last 15s
+(`quietestCut`), texts joined by newlines. If decoding fails, the original
+file is sent. Verified in the browser: valid 16kHz WAV of full length; a
+230s test split 92/94/44s at the planted pause, all under 4MB. **Not yet
+confirmed on the phone.** Do not go back to sending Safari's MP4 directly.
 
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
@@ -392,8 +406,8 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
-- Voice notes (2026-11-11): prompt removed; test 2-3 notes. Gaps or "..."
-  again → ElevenLabs Scribe. Once good, remove
+- Voice notes (2026-11-11): WAV conversion pushed; test 2-3 notes of ~1 min
+  on the phone. Once good, remove
   the temporary `lastClip` readout (`app.js`). If accuracy ever drops,
   ElevenLabs Scribe is the next try (server-only change + a new Vercel
   secret). Do not bring live text back by cutting pieces — that design is

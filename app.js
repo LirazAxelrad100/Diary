@@ -615,8 +615,7 @@ composer.addEventListener('keydown', (e) => {
    missing live text, looping, lost sentences. A plain Voice Memos file sent
    to the same model was accurate, so this copies that. */
 const TAIL_MS = 1000;                  // keep recording this long after stop
-// Vercel rejects bodies over 4.5MB; 64kbps fills 4MB in ~8.7 min, so a note
-// stops itself at 8 and always fits in one upload.
+// A forgotten mic stops itself. Long notes are sent as several WAV pieces.
 const MAX_REC_MS = 8 * 60 * 1000;
 const MAX_UPLOAD = 4 * 1024 * 1024;
 
@@ -702,17 +701,96 @@ async function transcribe(blob) {
   return (await res.json()).text;
 }
 
+/* The iPhone's recorder writes a *fragmented* MP4 — the audio in a chain of
+   small pieces, unlike the plain file Voice Memos makes. OpenAI reads those
+   badly: it returned only the first words, dropped the last sentence, or
+   skipped stretches and wrote "..." — while plain Voice Memos files of the
+   same speech came back perfect. So the recording is decoded here and sent
+   as plain WAV (16kHz mono, what the model works at anyway). WAV is big
+   (~1.9MB a minute), so a long note goes as several files, each cut at the
+   quietest moment near its end so no word is split. */
+const WAV_RATE = 16000;
+const WAV_PIECE_S = 100;               // 3.2MB each, under Vercel's 4.5MB
+const CUT_SEARCH_S = 15;               // look this far back for a quiet cut
+
+async function toWavPieces(blob) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new Ctx();
+  let decoded;
+  try {
+    decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+  } finally {
+    ctx.close && ctx.close();
+  }
+  const frames = Math.ceil(decoded.duration * WAV_RATE);
+  const off = new OfflineAudioContext(1, frames, WAV_RATE);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const pcm = (await off.startRendering()).getChannelData(0);
+
+  const pieces = [];
+  const max = WAV_PIECE_S * WAV_RATE;
+  for (let start = 0; start < pcm.length;) {
+    let end = Math.min(start + max, pcm.length);
+    if (end < pcm.length) end = quietestCut(pcm, end - CUT_SEARCH_S * WAV_RATE, end);
+    pieces.push(wavBlob(pcm.subarray(start, end)));
+    start = end;
+  }
+  return pieces;
+}
+
+// The start of the quietest 100ms window between a and b.
+function quietestCut(pcm, a, b) {
+  const win = WAV_RATE / 10;
+  let best = b, bestE = Infinity;
+  for (let i = a; i + win <= b; i += win) {
+    let e = 0;
+    for (let j = i; j < i + win; j++) e += pcm[j] * pcm[j];
+    if (e < bestE) { bestE = e; best = i; }
+  }
+  return best;
+}
+
+function wavBlob(pcm) {
+  const buf = new ArrayBuffer(44 + pcm.length * 2);
+  const v = new DataView(buf);
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, WAV_RATE, true); v.setUint32(28, WAV_RATE * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) {
+    const x = Math.max(-1, Math.min(1, pcm[i]));
+    v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
 async function sendClip(blob) {
   if (!blob.size) return;
-  if (blob.size > MAX_UPLOAD) { failedClips.push(blob); micNote(); return; }
   sending++;
   micNote();
+  let pieces;
   try {
-    insertTranscript(await transcribe(blob));
+    pieces = await toWavPieces(blob);
   } catch (err) {
-    console.warn('Transcription failed:', err.message);
-    failedClips.push(blob);
+    console.warn('WAV conversion failed:', err.message);
+    pieces = [blob];                   // better the original than nothing
   }
+  const texts = [];
+  for (const piece of pieces) {
+    if (piece.size > MAX_UPLOAD) { failedClips.push(piece); continue; }
+    try {
+      texts.push(await transcribe(piece));
+    } catch (err) {
+      console.warn('Transcription failed:', err.message);
+      failedClips.push(piece);
+    }
+  }
+  insertTranscript(texts.filter(Boolean).join('\n'));
   sending--;
   micNote();
 }
