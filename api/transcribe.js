@@ -82,15 +82,15 @@ module.exports = async function handler(req, res) {
     form.append("file", new Blob([audio], { type }), `note.${ext}`);
     form.append("model", MODEL);
     // Mostly Hebrew. Fixing the language stops a short note being misread as
-    // another language; the prompt tells it English words are expected too.
+    // another language.
     form.append("language", "he");
     // Without this, gpt-4o-transcribe can stop at the first pause and return
     // only the opening words (a 20s note came back as 4 words, 2026-11-10).
     // "auto" lets the server split the audio at silences and transcribe all.
     form.append("chunking_strategy", "auto");
-    // No earlier diary text goes in the prompt: gpt-4o-transcribe copied it
-    // back into its answer, so notes repeated themselves (2026-11-10).
-    form.append("prompt", "רשומה ביומן אישי, בעברית, לפעמים עם מילים באנגלית.");
+    // No prompt at all. gpt-4o-transcribe copies prompt text into its answer:
+    // first the earlier diary text (notes looped), then even the fixed hint
+    // "רשומה ביומן אישי…" appeared as a line of a 51s note (2026-11-11).
 
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",

@@ -336,6 +336,12 @@ stopping at the first pause; `chunking_strategy: "auto"` is what fixed it.
 Side effect: each chunk arrives on its own line. Liraz is happy with that —
 do not join them. She is testing a few more notes; then remove `lastClip`
 (it also overlaps the composer's last line, which is fine while temporary).
+**2026-11-11 — not fixed after all.** A 51s note (399KB, complete) came
+back with a gap marked "..." where speech was skipped, and the fixed prompt
+"רשומה ביומן אישי, בעברית, לפעמים עם מילים באנגלית." appeared as a line of
+the text. The prompt is now removed entirely (only `language: he` is sent).
+If gaps or "..." still appear, switch to ElevenLabs Scribe — Liraz's test
+results are in `~/Documents/voice test/results.html` (outside the repo).
 
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
@@ -386,7 +392,8 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
-- Voice notes (2026-11-10): working. After a few more good notes, remove
+- Voice notes (2026-11-11): prompt removed; test 2-3 notes. Gaps or "..."
+  again → ElevenLabs Scribe. Once good, remove
   the temporary `lastClip` readout (`app.js`). If accuracy ever drops,
   ElevenLabs Scribe is the next try (server-only change + a new Vercel
   secret). Do not bring live text back by cutting pieces — that design is
