@@ -356,6 +356,21 @@ go as several files, each cut at the quietest 100ms in its last 15s
 file is sent. Verified in the browser: valid 16kHz WAV of full length; a
 230s test split 92/94/44s at the planted pause, all under 4MB. **Not yet
 confirmed on the phone.** Do not go back to sending Safari's MP4 directly.
+**2026-11-13 — WAV did not fix it.** A note recorded with loud music
+around came back incomplete and wrong: "אני שמח" for "אני שמחה", and an
+invented Irish line ("Ba mhaith leis a bheith fantaisí") in place of real
+speech. Not known whether the recording or the model is at fault — Liraz
+rightly pushed back on assuming the model. **Two-model comparison
+(`app.js?v=18`, TEMPORARY):** `api/transcribe.js` sends each piece to OpenAI
+and, when `ELEVENLABS_API_KEY` is set in Vercel, to ElevenLabs Scribe
+(`scribe_v2`, `heb`, override with `ELEVENLABS_MODEL`) in parallel; returns
+`{ text, alt }`. A failed ElevenLabs call returns `alt: ""` (shows "—").
+The app inserts both into the entry as `[OpenAI]` / `[ElevenLabs]` blocks;
+she deletes the loser by hand. Reading: both wrong in the same places → the
+recording; only OpenAI wrong → the model. Recording settings deliberately
+left unchanged (noise suppression still off) so the test has one variable.
+Server tested with faked services (all 5 success/failure combinations);
+app tested in the browser with a fake mic.
 
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
@@ -406,8 +421,10 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
-- Voice notes (2026-11-11): WAV conversion pushed; test 2-3 notes of ~1 min
-  on the phone. Once good, remove
+- Voice notes (2026-11-13): two-model comparison running. When decided:
+  keep the winner in `api/transcribe.js`, remove the `[OpenAI]/[ElevenLabs]`
+  blocks in `sendClip`, and if the recording is to blame instead, revisit
+  noise suppression. Also remove
   the temporary `lastClip` readout (`app.js`). If accuracy ever drops,
   ElevenLabs Scribe is the next try (server-only change + a new Vercel
   secret). Do not bring live text back by cutting pieces — that design is

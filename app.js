@@ -698,7 +698,7 @@ async function transcribe(blob) {
     body: blob
   });
   if (!res.ok) throw new Error(`transcribe ${res.status}`);
-  return (await res.json()).text;
+  return res.json();                   // { text, alt } — alt: ElevenLabs, temporary
 }
 
 /* The iPhone's recorder writes a *fragmented* MP4 — the audio in a chain of
@@ -780,17 +780,28 @@ async function sendClip(blob) {
     console.warn('WAV conversion failed:', err.message);
     pieces = [blob];                   // better the original than nothing
   }
-  const texts = [];
+  const texts = [], alts = [];
   for (const piece of pieces) {
     if (piece.size > MAX_UPLOAD) { failedClips.push(piece); continue; }
     try {
-      texts.push(await transcribe(piece));
+      const r = await transcribe(piece);
+      texts.push(r.text);
+      alts.push(r.alt);
     } catch (err) {
       console.warn('Transcription failed:', err.message);
       failedClips.push(piece);
     }
   }
-  insertTranscript(texts.filter(Boolean).join('\n'));
+  const main = texts.filter(Boolean).join('\n');
+  // TEMPORARY comparison (2026-11-13): when the server also asked ElevenLabs,
+  // both versions go into the entry, labelled, so they can be compared in
+  // real use. Keep one, delete the other by hand. Remove once decided.
+  if (alts.some((a) => a !== null && a !== undefined)) {
+    const alt = alts.filter(Boolean).join('\n');
+    insertTranscript(`[OpenAI]\n${main || '—'}\n\n[ElevenLabs]\n${alt || '—'}`);
+  } else {
+    insertTranscript(main);
+  }
   sending--;
   micNote();
 }

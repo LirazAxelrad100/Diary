@@ -43,6 +43,54 @@ async function readBody(req) {
   return Buffer.concat(chunks);
 }
 
+async function openaiText(audio, type, ext, apiKey) {
+  const form = new FormData();
+  form.append("file", new Blob([audio], { type }), `note.${ext}`);
+  form.append("model", MODEL);
+  // Mostly Hebrew. Fixing the language stops a short note being misread as
+  // another language.
+  form.append("language", "he");
+  // Without this, gpt-4o-transcribe can stop at the first pause and return
+  // only the opening words (a 20s note came back as 4 words, 2026-11-10).
+  form.append("chunking_strategy", "auto");
+  // No prompt at all. gpt-4o-transcribe copies prompt text into its answer:
+  // first the earlier diary text (notes looped), then even the fixed hint
+  // "רשומה ביומן אישי…" appeared as a line of a 51s note (2026-11-11).
+  try {
+    const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}` },
+      body: form
+    });
+    // Status only — the response body can echo the transcript back.
+    if (!r.ok) { console.error("OpenAI transcription error", r.status); return null; }
+    return ((await r.json()).text || "").trim();
+  } catch (err) {
+    console.error("OpenAI request failed");
+    return null;
+  }
+}
+
+async function elevenText(audio, type, ext) {
+  const form = new FormData();
+  form.append("file", new Blob([audio], { type }), `note.${ext}`);
+  form.append("model_id", process.env.ELEVENLABS_MODEL || "scribe_v2");
+  form.append("language_code", "heb");
+  form.append("tag_audio_events", "false");   // no "(music)" markers in the text
+  try {
+    const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST",
+      headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY },
+      body: form
+    });
+    if (!r.ok) { console.error("ElevenLabs transcription error", r.status); return null; }
+    return ((await r.json()).text || "").trim();
+  } catch (err) {
+    console.error("ElevenLabs request failed");
+    return null;
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
@@ -78,35 +126,23 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const form = new FormData();
-    form.append("file", new Blob([audio], { type }), `note.${ext}`);
-    form.append("model", MODEL);
-    // Mostly Hebrew. Fixing the language stops a short note being misread as
-    // another language.
-    form.append("language", "he");
-    // Without this, gpt-4o-transcribe can stop at the first pause and return
-    // only the opening words (a 20s note came back as 4 words, 2026-11-10).
-    // "auto" lets the server split the audio at silences and transcribe all.
-    form.append("chunking_strategy", "auto");
-    // No prompt at all. gpt-4o-transcribe copies prompt text into its answer:
-    // first the earlier diary text (notes looped), then even the fixed hint
-    // "רשומה ביומן אישי…" appeared as a line of a 51s note (2026-11-11).
-
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { authorization: `Bearer ${apiKey}` },
-      body: form
-    });
-
-    if (!response.ok) {
-      // Status only — the response body can echo the transcript back.
-      console.error("OpenAI transcription error", response.status);
+    // TEMPORARY comparison (2026-11-13): every note goes to OpenAI and, when
+    // ELEVENLABS_API_KEY is set, to ElevenLabs Scribe at the same time. The
+    // app shows both, so Liraz can see which one hears her Hebrew right — and
+    // if both fail in the same places, the recording is the problem.
+    const [openai, eleven] = await Promise.all([
+      openaiText(audio, type, ext, apiKey),
+      process.env.ELEVENLABS_API_KEY
+        // A failed ElevenLabs call comes back as "" (shown as "—"), not null,
+        // so a broken key is visible instead of silently ending the comparison.
+        ? elevenText(audio, type, ext).then((t) => t ?? "")
+        : Promise.resolve(null)
+    ]);
+    if (openai === null && !eleven) {
       res.status(502).json({ error: "Transcription service failed" });
       return;
     }
-
-    const data = await response.json();
-    res.status(200).json({ text: (data.text || "").trim() });
+    res.status(200).json({ text: openai || "", alt: eleven });
   } catch (err) {
     console.error("Transcription failed:", err.message);
     res.status(500).json({ error: "Unexpected error" });
