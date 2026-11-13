@@ -522,6 +522,12 @@ Worth re-checking with the designer if the look is ever revisited:
   live tracking is not only safe, it is what removes the flicker. Apply the
   offset alone, off the `scroll` event, and the screen floats; apply the height
   alone and the app blinks off screen entirely.
+- **After adding a Vercel env var, do not click the "Redeploy" button it
+  offers if a push is also coming.** It redeploys whatever is *current*;
+  clicked right after a push (2026-11-13) it put the previous version back on
+  top, so the live site kept serving `v=17`. Fix: Deployments → ⋯ on the
+  newest commit → Redeploy. Quick check of what is live:
+  `curl -s https://liraz-diary.vercel.app/ | grep -o 'app.js?v=[0-9]*'`.
 - Do not open `index.html` via `file://` — browsers restrict storage there and
   entries can be lost. Use the Pages URL, or serve the folder over HTTP.
 - Never commit exported diary files. `.gitignore` already blocks
