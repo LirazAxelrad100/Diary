@@ -372,6 +372,25 @@ left unchanged (noise suppression still off) so the test has one variable.
 Server tested with faked services (all 5 success/failure combinations);
 app tested in the browser with a fake mic.
 
+**Update 2026-11-13 (later) — decided: ElevenLabs Scribe only
+(`app.js?v=19`).** Three phone notes through both models: on the 17s note
+OpenAI dropped a sentence and the whole ending, ElevenLabs got every
+sentence, including the feminine "בטוחה"; on the 23s note OpenAI invented the
+ending ("כנפי תיוגה. Babaite. Naħa."), ElevenLabs was right but for one
+letter. **Same recording, one model right → the recording was fine and
+`gpt-4o-transcribe` was the problem all along.** The fragmented-MP4 theory
+above was therefore wrong as the cause; WAV conversion is kept anyway as a
+safe input. `api/transcribe.js` now calls only ElevenLabs (`scribe_v2`,
+`heb`, `tag_audio_events: false`; override with `ELEVENLABS_MODEL`) and
+needs `ELEVENLABS_API_KEY`; `OPENAI_API_KEY` is no longer read. Removed: the
+`[OpenAI]/[ElevenLabs]` comparison and the temporary `lastClip` readout.
+Recording settings unchanged (echo cancellation and noise suppression off,
+AGC on, 64kbps, 1s tail, 8 min cap). Server tested with faked services
+(works / ElevenLabs error / no key / signed out); app tested in the browser.
+Audio now goes to ElevenLabs instead of OpenAI — told to Liraz.
+Note: where a line wraps around an English word in Hebrew text ("Eleven" /
+"labs" on two lines) it looks scrambled but the stored order is right.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
@@ -421,19 +440,10 @@ Worth re-checking with the designer if the look is ever revisited:
   sign-in), which the handoff did not cover.
 
 ## Next
-- Voice notes (2026-11-13): two-model comparison running. When decided:
-  keep the winner in `api/transcribe.js`, remove the `[OpenAI]/[ElevenLabs]`
-  blocks in `sendClip`, and if the recording is to blame instead, revisit
-  noise suppression. Also remove
-  the temporary `lastClip` readout (`app.js`). If accuracy ever drops,
-  ElevenLabs Scribe is the next try (server-only change + a new Vercel
-  secret). Do not bring live text back by cutting pieces — that design is
-  what broke; if live text is ever wanted, it means streaming (OpenAI
-  Realtime), a separate project.
-- Voice notes: accuracy accepted as-is on 2026-10-19 — Liraz corrects the
-  text by hand. If it ever needs to be better, try ElevenLabs Scribe (reported
-  stronger Hebrew, similar price): a server change in `api/transcribe.js` plus
-  a new Vercel secret; the app side does not change.
+- Voice notes (2026-11-13): ElevenLabs only, awaiting a few phone notes.
+  Liraz to delete `OPENAI_API_KEY` from Vercel and the key itself in OpenAI
+  once it is confirmed. Do not bring live text back by cutting pieces — if
+  live text is ever wanted, it means streaming, a separate project.
 - Phase 4 (optional): passphrase encryption via Web Crypto before upload, so
   the text is unreadable even to Supabase.
 
@@ -473,8 +483,9 @@ Worth re-checking with the designer if the look is ever revisited:
   those strings is the work; the layout needs no change.
 
 ## Avoid
-- **Never log the OpenAI response body or the audio** in `api/transcribe.js`
-  — the body echoes the transcript, i.e. diary content, into Vercel's logs.
+- **Never log the transcription response body or the audio** in
+  `api/transcribe.js` — the body is the transcript, i.e. diary content, and
+  would land in Vercel's logs.
   Status codes only.
 - **Never bound navigation by the clock alone.** Anything that decides which
   months are reachable must be bounded by the *data*, not by `thisMonth()`. A

@@ -604,8 +604,8 @@ composer.addEventListener('keydown', (e) => {
 
 /* ---------- voice notes ---------- */
 
-/* Tap the mic, talk, tap again: the audio goes to /api/transcribe (OpenAI,
-   behind the sign-in) and the text lands at the caret, where it saves like
+/* Tap the mic, talk, tap again: the audio goes to /api/transcribe
+   (ElevenLabs Scribe, behind the sign-in) and the text lands at the caret, where it saves like
    typing. The audio itself is never stored — only the text is kept.
 
    Deliberately simple (2026-11-10): ONE recording, sent once, on stop. An
@@ -627,10 +627,6 @@ let recording = false;
 let starting = false;                  // waiting on the mic permission prompt
 let sending = 0;                       // notes recorded but not yet text
 let failedClips = [];                  // kept in memory for "try again"
-// TEMPORARY (2026-11-10): what the last note actually sent — length, size and
-// a play button — to tell a cut-off recording from a cut-off transcript.
-// Remove once voice notes are confirmed working.
-let lastClip = null;
 
 const canRecord = () =>
   !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
@@ -661,9 +657,6 @@ function micNote() {
     note.textContent = 'מתמללת…';
   } else if (failedClips.length) {
     note.innerHTML = 'התמלול נכשל · <button type="button" id="micRetry">לנסות שוב</button>';
-  } else if (lastClip) {
-    note.innerHTML = `<span class="mono" dir="ltr">${lastClip.secs}s · ${lastClip.kb}KB</span> ` +
-      '<button type="button" id="micPlay">▶</button>';
   } else {
     note.textContent = '';
   }
@@ -698,15 +691,14 @@ async function transcribe(blob) {
     body: blob
   });
   if (!res.ok) throw new Error(`transcribe ${res.status}`);
-  return res.json();                   // { text, alt } — alt: ElevenLabs, temporary
+  return (await res.json()).text;
 }
 
-/* The iPhone's recorder writes a *fragmented* MP4 — the audio in a chain of
-   small pieces, unlike the plain file Voice Memos makes. OpenAI reads those
-   badly: it returned only the first words, dropped the last sentence, or
-   skipped stretches and wrote "..." — while plain Voice Memos files of the
-   same speech came back perfect. So the recording is decoded here and sent
-   as plain WAV (16kHz mono, what the model works at anyway). WAV is big
+/* The recording is decoded here and sent as plain WAV (16kHz mono). The
+   iPhone's recorder writes a *fragmented* MP4, and while OpenAI was in use
+   that was suspected of causing its dropped and invented text — the real
+   cause turned out to be the model (2026-11-13). WAV stays because it is the
+   one format every service reads the same way. WAV is big
    (~1.9MB a minute), so a long note goes as several files, each cut at the
    quietest moment near its end so no word is split. */
 const WAV_RATE = 16000;
@@ -780,28 +772,17 @@ async function sendClip(blob) {
     console.warn('WAV conversion failed:', err.message);
     pieces = [blob];                   // better the original than nothing
   }
-  const texts = [], alts = [];
+  const texts = [];
   for (const piece of pieces) {
     if (piece.size > MAX_UPLOAD) { failedClips.push(piece); continue; }
     try {
-      const r = await transcribe(piece);
-      texts.push(r.text);
-      alts.push(r.alt);
+      texts.push(await transcribe(piece));
     } catch (err) {
       console.warn('Transcription failed:', err.message);
       failedClips.push(piece);
     }
   }
-  const main = texts.filter(Boolean).join('\n');
-  // TEMPORARY comparison (2026-11-13): when the server also asked ElevenLabs,
-  // both versions go into the entry, labelled, so they can be compared in
-  // real use. Keep one, delete the other by hand. Remove once decided.
-  if (alts.some((a) => a !== null && a !== undefined)) {
-    const alt = alts.filter(Boolean).join('\n');
-    insertTranscript(`[OpenAI]\n${main || '—'}\n\n[ElevenLabs]\n${alt || '—'}`);
-  } else {
-    insertTranscript(main);
-  }
+  insertTranscript(texts.filter(Boolean).join('\n'));
   sending--;
   micNote();
 }
@@ -839,9 +820,6 @@ async function startRecording() {
   rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
   rec.onstop = () => {
     const blob = new Blob(parts, { type: (rec.mimeType || type).split(';')[0] });
-    if (lastClip) URL.revokeObjectURL(lastClip.url);
-    lastClip = { secs: Math.round((Date.now() - recStart) / 1000),
-                 kb: Math.round(blob.size / 1024), url: URL.createObjectURL(blob) };
     // The mic is released only after the file is complete: cutting it off in
     // the same instant as stop() lost the last words on the phone.
     mic.getTracks().forEach((t) => t.stop());
@@ -889,7 +867,6 @@ $('micBtn').addEventListener('click', () => {
 });
 
 $('micWrap').addEventListener('click', (e) => {
-  if (e.target.id === 'micPlay' && lastClip) { new Audio(lastClip.url).play(); return; }
   if (e.target.id !== 'micRetry') return;
   const clips = failedClips;
   failedClips = [];
