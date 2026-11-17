@@ -393,7 +393,6 @@ body.mode-writing .thread:focus-within { opacity: 1; }
   cursor: text;
 }
 
-body.mode-reading .entry { cursor: default; }
 
 /* The dot straddles the rail line; the time sits in the gutter beside it. */
 .entry .dot {
@@ -511,25 +510,6 @@ body.editing .composerWrap { display: none; }
 .entryTools button:hover { color: var(--ink); }
 .entryTools .danger:hover { color: var(--danger); }
 
-/* Reading view: מחיקה stays out of the way until wanted — on hover with a
-   mouse, after a tap on a phone (.picked). */
-.readTools {
-  visibility: hidden;
-  position: absolute;          /* in the gutter under the time: takes no space */
-  inset-inline-start: calc(var(--gutter) * -1 + 12px);
-  top: 24px;
-  margin: 0;
-}
-.readTools button { padding: 6px 0; }
-@media (max-width: 720px) {
-  .readTools { inset-inline-start: calc(var(--gutter) * -1 + 10px); top: 18px; }
-  .readTools button { padding: 12px 0; }   /* a real finger target */
-}
-.entry.picked .readTools,
-.entry:focus-within .readTools { visibility: visible; }
-@media (hover: hover) {
-  .entry:hover .readTools { visibility: visible; }
-}
 
 /* ---------- composer ---------- */
 
