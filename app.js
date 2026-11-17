@@ -280,6 +280,9 @@ function entryHtml(e) {
             <span class="dot"></span>
             <span class="time"><bdi>${timeLabel(e.ts)}</bdi></span>
             <div class="body">${toHtml(e.text)}</div>
+            ${readMode ? `<div class="entryTools readTools">
+              <button type="button" class="danger" data-act="remove">מחיקה</button>
+            </div>` : ''}
           </article>`;
 }
 
@@ -1012,7 +1015,8 @@ $('sync').addEventListener('click', syncNow);
 /* ---------- editing an older entry ---------- */
 
 stream.addEventListener('click', (ev) => {
-  if (readMode || query) return;
+  if (readMode) return readingClick(ev);
+  if (query) return;
   // סיום / מחיקה re-render before this runs, so their tap arrives from an
   // element already gone — without this check it reopened the entry it closed.
   if (!stream.contains(ev.target)) return;
@@ -1079,6 +1083,32 @@ function endEdit() {
   }
   editId = null;
   render();
+}
+
+/* ---------- deleting in reading view ---------- */
+
+// Any day, any month. On desktop מחיקה shows on hover; on a phone (no hover)
+// a tap on the entry shows it, and a tap elsewhere hides it again.
+function readingClick(ev) {
+  if (!stream.contains(ev.target)) return;
+  const article = ev.target.closest('.entry');
+  if (ev.target.closest('[data-act="remove"]') && article) {
+    if (!confirm('למחוק את הרשומה? אי אפשר לבטל.')) return;
+    const entry = entries.find((e) => e.id === article.dataset.id);
+    if (!entry) return;
+    entry.deleted = true;      // tombstone, so the delete reaches other devices
+    entry.text = '';
+    touch(entry);
+    const scroll = stream.scrollTop;
+    render();
+    stream.scrollTop = scroll; // stay where she was reading
+    return;
+  }
+  if (window.getSelection().toString()) return;  // selecting text, not tapping
+  stream.querySelectorAll('.entry.picked').forEach((a) => {
+    if (a !== article) a.classList.remove('picked');
+  });
+  if (article) article.classList.toggle('picked');
 }
 
 /* ---------- search, modes, menu ---------- */

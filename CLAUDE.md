@@ -391,6 +391,14 @@ Audio now goes to ElevenLabs instead of OpenAI — told to Liraz.
 Note: where a line wraps around an English word in Hebrew text ("Eleven" /
 "labs" on two lines) it looks scrambled but the stored order is right.
 
+**Update 2026-11-17 — delete in reading view (`app.js?v=20`, `style.css?v=7`).**
+Past days could not be deleted: the editor only opens on today's entries in
+writing view. Reading view now has `מחיקה` under each entry's time, in the
+gutter (absolute, so it takes no space): shown on hover on desktop, after a
+tap on the entry on a phone (`.picked`; a tap elsewhere hides it). Confirm
+dialog, then the same tombstone as the editor's delete, and the scroll
+position is kept. Verified in the browser at desktop and 375px.
+
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
 with no signal; Supabase is the copy other devices read.
