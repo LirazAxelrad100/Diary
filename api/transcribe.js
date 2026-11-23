@@ -61,7 +61,17 @@ async function transcribe(audio, type, ext, apiKey) {
     body: form
   });
   // Status only — the response body is the transcript, i.e. diary content.
-  if (!r.ok) { console.error("ElevenLabs transcription error", r.status); return { failed: r.status }; }
+  if (!r.ok) {
+    // An error reply holds ElevenLabs' reason code (e.g. "missing_permissions",
+    // "detected_unusual_activity"), not diary text, so that code alone is kept.
+    let reason = "";
+    try {
+      const d = (await r.json()).detail;
+      reason = String((d && (d.status || d.code)) || "").replace(/[^\w-]/g, "").slice(0, 40);
+    } catch (e) {}
+    console.error("ElevenLabs transcription error", r.status, reason);
+    return { failed: reason ? `${r.status} ${reason}` : r.status };
+  }
   return { text: ((await r.json()).text || "").trim() };
 }
 
