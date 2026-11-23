@@ -400,18 +400,18 @@ it that way. Reading view keeps its scroll position when the edit closes
 (`rerenderInPlace`). A first version (a hover-only מחיקה under the time,
 `v=20`) was rejected as a different UX from writing view and removed.
 
-**Update 2026-11-23 — voice notes failing again; reason now shown
-(`app.js?v=22`).** On the phone almost every note ended in "התמלול נכשל",
-with the recording itself fine. The server proved healthy from outside (key
-set, unsigned calls rejected), so ElevenLabs was refusing the call — likely
-suspect: free-tier credits used up by the 11-13 comparison. Not confirmed.
-The app hid the reason, so every earlier fix was a guess. Now
-`api/transcribe.js` returns ElevenLabs' **status code only** as `upstream`
-(never the body) and the note reads e.g. `התמלול נכשל (ElevenLabs 401)`.
-Each piece is also retried once after 1.5s before it is marked failed.
-Next: read the code from one phone note / check ElevenLabs usage. If it is
-credits, the fix is a paid plan; an automatic fallback to OpenAI was offered
-as a safety net.
+**Update 2026-11-23 — voice notes failing again: the ElevenLabs key had
+expired. Fixed and confirmed on the phone.** Almost every note ended in
+"התמלול נכשל" with the recording fine. The app hid the reason, so earlier
+fixes were guesses (a credits guess was also wrong — 6,267 of 10,000 left).
+Now `api/transcribe.js` returns ElevenLabs' status plus its short reason code
+(`detail.status`, never the body) as `upstream`, and the note reads e.g.
+`התמלול נכשל (ElevenLabs 401 …)`. Each piece is retried once after 1.5s.
+The 401 turned out to be an **expired key — ElevenLabs sent no warning.**
+Liraz made a new key (Speech to Text only, no expiry) and replaced
+`ELEVENLABS_API_KEY` in Vercel; a push deployed it. **If voice fails with
+ElevenLabs 401 again, check the key in ElevenLabs → Developers → API Keys
+first.** Env var changes only take effect on a new deployment.
 
 ## How sync works
 Local-first. Every change is written to `localStorage` first, so the app works
