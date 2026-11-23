@@ -656,7 +656,8 @@ function micNote() {
   } else if (sending) {
     note.textContent = 'מתמללת…';
   } else if (failedClips.length) {
-    note.innerHTML = 'התמלול נכשל · <button type="button" id="micRetry">לנסות שוב</button>';
+    const why = lastFail ? ` <span class="mono" dir="ltr">(${escapeHtml(lastFail)})</span>` : '';
+    note.innerHTML = `התמלול נכשל${why} · <button type="button" id="micRetry">לנסות שוב</button>`;
   } else {
     note.textContent = '';
   }
@@ -680,17 +681,26 @@ function insertTranscript(text) {
   composer.scrollTop = composer.scrollHeight;
 }
 
+let lastFail = '';
+
 async function transcribe(blob) {
+  lastFail = '';
   const { data } = await db.auth.getSession();
   const token = data.session && data.session.access_token;
-  if (!token) throw new Error('signed out');
+  if (!token) { lastFail = 'signed out'; throw new Error('signed out'); }
 
   const res = await fetch('/api/transcribe', {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': blob.type },
     body: blob
   });
-  if (!res.ok) throw new Error(`transcribe ${res.status}`);
+  if (!res.ok) {
+    // Keep the reason, shown next to התמלול נכשל: ours (401 signed out, 413
+    // too long…) or ElevenLabs' own code behind a 502 (e.g. 401 key, 429 quota).
+    const info = await res.json().catch(() => ({}));
+    lastFail = info.upstream ? `ElevenLabs ${info.upstream}` : String(res.status);
+    throw new Error(`transcribe ${res.status}`);
+  }
   return (await res.json()).text;
 }
 
@@ -778,8 +788,14 @@ async function sendClip(blob) {
     try {
       texts.push(await transcribe(piece));
     } catch (err) {
-      console.warn('Transcription failed:', err.message);
-      failedClips.push(piece);
+      // One quiet second try: a phone on a weak signal often fails once.
+      try {
+        await new Promise((r) => setTimeout(r, 1500));
+        texts.push(await transcribe(piece));
+      } catch (err2) {
+        console.warn('Transcription failed:', err2.message);
+        failedClips.push(piece);
+      }
     }
   }
   insertTranscript(texts.filter(Boolean).join('\n'));

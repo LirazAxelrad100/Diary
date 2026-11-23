@@ -61,8 +61,8 @@ async function transcribe(audio, type, ext, apiKey) {
     body: form
   });
   // Status only — the response body is the transcript, i.e. diary content.
-  if (!r.ok) { console.error("ElevenLabs transcription error", r.status); return null; }
-  return ((await r.json()).text || "").trim();
+  if (!r.ok) { console.error("ElevenLabs transcription error", r.status); return { failed: r.status }; }
+  return { text: ((await r.json()).text || "").trim() };
 }
 
 module.exports = async function handler(req, res) {
@@ -100,12 +100,14 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const text = await transcribe(audio, type, ext, apiKey);
-    if (text === null) {
-      res.status(502).json({ error: "Transcription service failed" });
+    const out = await transcribe(audio, type, ext, apiKey);
+    if (out.failed) {
+      // ElevenLabs' status code only (e.g. 401 bad key, 429 quota), never its
+      // body, so the app can show why without digging in Vercel's logs.
+      res.status(502).json({ error: "Transcription service failed", upstream: out.failed });
       return;
     }
-    res.status(200).json({ text });
+    res.status(200).json({ text: out.text });
   } catch (err) {
     console.error("Transcription failed:", err.message);
     res.status(500).json({ error: "Unexpected error" });
